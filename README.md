@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.png" alt="yamasaki" width="200">
+  <img src="assets/social-preview.svg" alt="yamasaki" width="640">
 </p>
 
 # yamasaki
@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-powered-blueviolet)](https://docs.anthropic.com/en/docs/claude-code)
 
-> A "spec-first" AI-driven development template for Claude Code.
+> A "spec-first" AI-led development template for Claude Code.
 
 Claude Code で「設計書ファースト」の開発を自動化するテンプレート。
 
