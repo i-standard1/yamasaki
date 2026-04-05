@@ -1,0 +1,14 @@
+# spec-map.yml - Spec とコードの対応関係を管理する
+# コードリポのルートに配置する（分離リポ構成ではフロント・バックそれぞれに持つ）
+#
+# フォーマット:
+#   REQ-XXX-NNN:
+#     spec_version: N          # Specが改訂されるたびにインクリメント（revise-specが自動実行）
+#     implementation:
+#       - path: src/xxx/yyy.ts:functionName
+#         confirmed: N         # 確認した時点の spec_version と同値
+#     tests:
+#       - path: tests/xxx/yyy.test.ts
+#         confirmed: N
+#
+# spec_version > confirmed → 未確認（Spec変更後の修正・確認が必要）

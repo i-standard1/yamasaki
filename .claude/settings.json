@@ -1,0 +1,74 @@
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Edit",
+      "Write",
+      "Glob",
+      "Grep",
+      "Bash"
+    ],
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(rm -rf /*)",
+      "Bash(sudo *)",
+      "Bash(git push --force *)",
+      "Bash(git push -f *)",
+      "Bash(git push --force-with-lease *)",
+      "Bash(git reset --hard *)",
+      "Bash(curl *)",
+      "Bash(wget *)",
+      "Bash(chmod 777 *)",
+      "Bash(chmod -R 777 *)",
+      "Bash(cat *hosts.yml*)",
+      "Bash(cat *gh/hosts*)",
+      "Read(~/.config/gh/*)",
+      "Read(.env)",
+      "Read(.env.*)",
+      "Read(**/*.pem)",
+      "Read(**/*.key)",
+      "Read(**/*credentials*)"
+    ],
+    "additionalDirectories": [
+      "../"
+    ]
+  },
+  "sandbox": {
+    "enabled": true,
+    "enableWeakerNetworkIsolation": true,
+    "allowUnsandboxedCommands": false,
+    "filesystem": {
+      "allowWrite": [
+        ".git",
+        ".git/**"
+      ],
+      "denyRead": [
+        ".env",
+        ".env.*",
+        "**/*.pem",
+        "**/*.key",
+        "**/*credentials*",
+        "~/.aws/credentials",
+        "~/.aws/config",
+        "~/.ssh",
+        "~/.gnupg"
+      ]
+    }
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/validate-command.sh"
+          }
+        ]
+      }
+    ]
+  },
+  "experimental": {
+    "agent_teams": true
+  }
+}

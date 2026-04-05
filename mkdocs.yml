@@ -1,0 +1,113 @@
+site_name: プロジェクト設計書
+theme:
+  name: material
+  language: ja
+  features:
+    - navigation.sections
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.top
+    - navigation.indexes
+    - navigation.expand
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+    - content.tabs.link
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: blue
+      toggle:
+        icon: material/brightness-7
+        name: ダークモードに切り替え
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: blue
+      toggle:
+        icon: material/brightness-4
+        name: ライトモードに切り替え
+  font:
+    text: Noto Sans JP
+    code: JetBrains Mono
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search
+  - mermaid2
+  - render_swagger
+
+markdown_extensions:
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - admonition
+  - pymdownx.details
+  - tables
+
+exclude_docs: |
+  !templates/
+
+extra_css:
+  - stylesheets/extra.css
+
+nav:
+  - ホーム: index.md
+  - 要件定義:
+    - requirements/index.md
+    - 概要: requirements/overview.md
+    # TODO: スキル実行で自動追加される
+  - 基本設計:
+    - design/index.md
+    - Spec依存グラフ: design/dependency-graph.md
+    # TODO: スキル実行で自動追加される
+  - 詳細設計:
+    - design-detail/index.md
+    # TODO: スキル実行で自動追加される
+  - テスト:
+    - tests/index.md
+    # TODO: スキル実行で自動追加される
+  - 品質ゲート: quality-gates.md
+  - API仕様(Swagger): api/index.md
+  - テンプレート:
+    - フェーズ1｜要件定義:
+      - 要件定義書: templates/phase1/requirements-spec.md
+      - 業務フロー図: templates/phase1/business-flow.md
+      - ユースケース: templates/phase1/usecase.md
+      - 画面一覧・遷移図: templates/phase1/screen-flow.md
+      - 用語定義書: templates/phase1/glossary.md
+      - 非機能要件定義書:
+        - 非機能要件定義書: templates/phase2/non-functional.md
+        - 性能設計書: templates/phase2/performance-design.md
+        - 可用性・スケーラビリティ設計書: templates/phase2/availability-design.md
+        - 運用・保守設計書: templates/phase2/operations-design.md
+    - フェーズ2｜基本設計:
+      - システム構成図: templates/phase2/system-architecture.md
+      - 共通コンポーネント一覧: templates/phase2/shared-components.md
+      - DB論理設計書: templates/phase2/db-design.md
+      - 外部連携仕様書: templates/phase2/api-spec.md
+      - プラットフォーム間連携設計: templates/phase2/platform-integration.md
+      - 機能別画面・UI設計書: templates/phase2/feature-design.md
+      - 機能別ロジック設計書: templates/phase2/feature-logic.md
+      - 帳票設計書: templates/phase2/report-design.md
+    - フェーズ3｜詳細設計:
+      - テーブル定義書: templates/phase3/db-schema.md
+      - モジュール設計書: templates/phase3/module-design.md
+      - バッチ設計書: templates/phase3/batch-design.md
+      - エラーコード定義書: templates/phase3/error-codes.md
+      - セキュリティ設計書: templates/phase3/security-design.md
+      - セキュリティ運用設計書: templates/phase3/security-ops.md
+      - データマイグレーション設計書: templates/phase3/data-migration.md
+    - フェーズ4｜テスト:
+      - 単体テスト仕様書: templates/phase4/unit-test-spec.md
+      - 結合テスト仕様書: templates/phase4/integration-test-spec.md
+      - システムテスト仕様書: templates/phase4/system-test-spec.md
+      - 受入テスト仕様書: templates/phase4/uat-spec.md
+      - テスト結果報告書: templates/phase4/test-report.md

@@ -1,0 +1,65 @@
+# Environment variables & secrets
+.env
+.env.*
+!.env.example
+
+# Private keys & certificates
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Credentials
+*credentials*
+*secret*
+!.claude/rules/security.md
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env/
+
+# Ruby
+vendor/bundle/
+
+# Build outputs
+dist/
+build/
+out/
+.next/
+.nuxt/
+
+# Test & coverage
+coverage/
+.nyc_output/
+
+# Logs (template keeps structure, ignore runtime logs)
+logs/**/*.log
+
+# Cloud credentials
+.aws/
+.ssh/
+.gnupg/

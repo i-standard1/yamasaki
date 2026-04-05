@@ -1,0 +1,104 @@
+# .github/workflows/ci.yml（バックエンドリポに配置）
+# NestJS バックエンド CI パイプライン
+# E2Eテストはフロントエンドリポ側で実行するため、ここでは含まない
+#
+# ジョブ依存関係:
+#   lint → unit → ai-review → summary
+#
+# セットアップ:
+#   1. .github/workflows/ci.yml にコピー
+#   2. .github/review-prompt.md にレビュープロンプトをコピー
+#   3. Secrets: ANTHROPIC_API_KEY
+#   4. Variables: REVIEW_MODEL（任意）
+
+name: CI
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  # ──────────────────────────────────────────────
+  # Stage 1: Lint & Type check
+  # ──────────────────────────────────────────────
+  lint:
+    name: ESLint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - run: npm ci
+      - name: ESLint
+        run: npm run lint
+      - name: Type check
+        run: npx tsc --noEmit
+
+  # ──────────────────────────────────────────────
+  # Stage 2: Unit test (Jest)
+  # ──────────────────────────────────────────────
+  unit:
+    name: Unit Tests (Jest)
+    needs: [lint]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - run: npm ci
+
+      # DB等が必要な場合はここで起動
+      # - name: Start dependencies
+      #   run: docker compose up -d db
+      #   env:
+      #     DATABASE_URL: postgresql://test:test@localhost:5432/test
+
+      - name: Run Jest
+        id: jest
+        run: |
+          npx jest --ci --coverage --json --outputFile=jest-results.json 2>&1 | tee unit-output.txt || true
+          if [ -f jest-results.json ]; then
+            SUCCESS=$(python3 -c "import json; r=json.load(open('jest-results.json')); print('true' if r.get('success', False) else 'false')" 2>/dev/null || echo "false")
+          else
+            SUCCESS="false"
+          fi
+          echo "success=${SUCCESS}" >> $GITHUB_OUTPUT
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-results
+          path: |
+            jest-results.json
+            unit-output.txt
+            coverage/
+          retention-days: 30
+      - name: Fail if tests failed
+        if: steps.jest.outputs.success != 'true'
+        run: exit 1
+
+  # ──────────────────────────────────────────────
+  # 共通ジョブ: spec-health, ai-review, summary
+  # → _shared/common-jobs.yml を参照してコピーすること
+  #
+  # このバリアントでの設定:
+  #   ai-review:  needs: [unit]
+  #   summary:    needs: [lint, unit, spec-health, ai-review]
+  #   summary の results:
+  #     'ESLint & Type Check': '${{ needs.lint.result }}'
+  #     'Unit Tests (Jest)': '${{ needs.unit.result }}'
+  #     'Spec Health Check': '${{ needs.spec-health.result }}'
+  #     'AI Review': '${{ needs.ai-review.result }}'
+  #   summary の末尾に追加:
+  #     body += `\n> E2Eテストはフロントエンドリポのパイプラインで実行されます。\n`;
+  # ──────────────────────────────────────────────

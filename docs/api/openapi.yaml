@@ -1,0 +1,6 @@
+openapi: "3.1.0"
+info:
+  title: "プロジェクトAPI"
+  version: "0.1.0"
+  description: "TODO: /init-spec で自動生成"
+paths: {}

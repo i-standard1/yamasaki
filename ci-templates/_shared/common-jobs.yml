@@ -1,0 +1,251 @@
+# 共通ジョブ定義（ci-monorepo.yml / ci-front.yml / ci-back.yml 共通）
+#
+# GitHub Actions は YAML アンカーやファイルインクルードをサポートしないため、
+# 各ワークフローファイルにコピーして使うこと。
+#
+# 使い方:
+#   1. 下記のジョブ定義を各 ci-*.yml の jobs: セクションにコピー
+#   2. NEEDS_PLACEHOLDER を実際の needs: リストに置換する（各バリアント参照）
+#   3. summary の results オブジェクトを実際のジョブ名に合わせて調整する
+#
+# needs: の設定値（バリアント別）:
+#   ai-review:
+#     - monorepo:  needs: [e2e]
+#     - front:     needs: [e2e]
+#     - back:      needs: [unit]
+#   summary:
+#     - monorepo:  needs: [lint, unit-front, unit-back, e2e, spec-health, ai-review]
+#     - front:     needs: [lint, unit, e2e, spec-health, ai-review]
+#     - back:      needs: [lint, unit, spec-health, ai-review]
+
+  # ──────────────────────────────────────────────
+  # Spec ヘルスチェック（テストと並列実行）
+  # ──────────────────────────────────────────────
+  spec-health:
+    name: Spec Health Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check spec-map.yml
+        id: check
+        run: |
+          if [ -f spec-map.yml ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+      - name: Validate spec-map consistency
+        if: steps.check.outputs.exists == 'true'
+        run: |
+          python3 -c "
+          import yaml, sys, os
+          with open('spec-map.yml') as f:
+              data = yaml.safe_load(f) or {}
+          issues = []
+          for req_id, entry in data.items():
+              if not isinstance(entry, dict): continue
+              sv = entry.get('spec_version', 0)
+              for item in entry.get('implementation', []) or []:
+                  if isinstance(item, dict) and item.get('confirmed', 0) < sv:
+                      issues.append(f'{req_id}: {item.get(\"path\",\"?\")} confirmed={item.get(\"confirmed\",0)} < spec_version={sv}')
+              for item in entry.get('tests', []) or []:
+                  if isinstance(item, dict) and item.get('confirmed', 0) < sv:
+                      issues.append(f'{req_id}: {item.get(\"path\",\"?\")} confirmed={item.get(\"confirmed\",0)} < spec_version={sv}')
+          if issues:
+              print('::warning::Spec-Code不一致: ' + '; '.join(issues))
+              sys.exit(1)
+          "
+
+  # ──────────────────────────────────────────────
+  # AI review — テスト通過後に実行
+  # needs: NEEDS_PLACEHOLDER（上記バリアント別設定を参照）
+  # ──────────────────────────────────────────────
+  ai-review:
+    name: AI Review
+    needs: NEEDS_PLACEHOLDER
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Build prompt and call Claude API
+        id: review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          REVIEW_MODEL: ${{ vars.REVIEW_MODEL || 'claude-sonnet-4-5-20250929' }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          git diff "origin/${BASE_REF}...HEAD" > /tmp/pr-diff.txt
+
+          python3 - <<'PYTHON_SCRIPT'
+          import json, os, re, urllib.request
+
+          template = open('.github/review-prompt.md').read()
+          diff = open('/tmp/pr-diff.txt').read()[:10000]
+          title = os.environ.get('PR_TITLE', '')
+          body = os.environ.get('PR_BODY', '')
+
+          design_intent = ''
+          try:
+              design_intent = open('DESIGN_INTENT.md').read()
+          except FileNotFoundError:
+              pass
+
+          prompt = (template
+              .replace('{{TITLE}}', title)
+              .replace('{{BODY}}', body)
+              .replace('{{DIFF}}', diff)
+              .replace('{{DESIGN_INTENT}}', design_intent))
+
+          payload = json.dumps({
+              "model": os.environ.get('REVIEW_MODEL', 'claude-sonnet-4-5-20250929'),
+              "max_tokens": 2000,
+              "messages": [{"role": "user", "content": prompt}]
+          }).encode()
+
+          req = urllib.request.Request(
+              'https://api.anthropic.com/v1/messages',
+              data=payload,
+              headers={
+                  'content-type': 'application/json',
+                  'x-api-key': os.environ['ANTHROPIC_API_KEY'],
+                  'anthropic-version': '2023-06-01',
+              }
+          )
+
+          try:
+              with urllib.request.urlopen(req) as res:
+                  data = json.loads(res.read())
+          except urllib.error.HTTPError as e:
+              error_body = e.read().decode()
+              print(f"API Error: {e.code} - {error_body}")
+              with open('/tmp/review-comment.txt', 'w') as f:
+                  f.write(f'APIエラー: {e.code}')
+              with open('/tmp/fixes.txt', 'w') as f:
+                  f.write('')
+              with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                  f.write('approved=false\n')
+              exit(0)
+
+          text = data.get('content', [{}])[0].get('text', '')
+          fence_match = re.search(r'```(?:json)?\s*\n?(.*?)\n?```', text, re.DOTALL)
+          json_str = fence_match.group(1).strip() if fence_match else text.strip()
+
+          try:
+              review = json.loads(json_str)
+          except json.JSONDecodeError:
+              review = {"approved": False, "comment": "レビュー結果のパースに失敗", "fixes_needed": []}
+
+          with open('/tmp/review-comment.txt', 'w') as f:
+              f.write(review.get('comment', ''))
+          with open('/tmp/fixes.txt', 'w') as f:
+              f.write('\n'.join(review.get('fixes_needed', [])))
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f'approved={str(review.get("approved", False)).lower()}\n')
+          PYTHON_SCRIPT
+
+      - name: Post review comment
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const approved = '${{ steps.review.outputs.approved }}' === 'true';
+            let comment = '', fixes = '';
+            try { comment = fs.readFileSync('/tmp/review-comment.txt', 'utf8'); } catch { comment = '手動で確認してください。'; }
+            try { fixes = fs.readFileSync('/tmp/fixes.txt', 'utf8').trim(); } catch {}
+
+            let body = `## 🤖 AI レビュー結果\n\n`;
+            body += approved ? '✅ **承認**\n\n' : '⚠️ **要修正**\n\n';
+            body += comment + '\n\n';
+            if (fixes) {
+              body += `### 修正が必要な箇所\n`;
+              fixes.split('\n').filter(f => f).forEach(f => { body += `- ${f}\n`; });
+            }
+
+            const comments = await github.rest.issues.listComments({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            });
+            const botComment = comments.data.find(c =>
+              c.user.type === 'Bot' && c.body.includes('AI レビュー結果')
+            );
+            if (botComment) {
+              await github.rest.issues.updateComment({ comment_id: botComment.id, owner: context.repo.owner, repo: context.repo.repo, body });
+            } else {
+              await github.rest.issues.createComment({ issue_number: context.issue.number, owner: context.repo.owner, repo: context.repo.repo, body });
+            }
+
+  # ──────────────────────────────────────────────
+  # Summary — 全ジョブ完了後にPRコメントで結果を集約
+  # needs: NEEDS_PLACEHOLDER（上記バリアント別設定を参照）
+  # results オブジェクトも各バリアントのジョブ構成に合わせて調整すること
+  #
+  # バリアント別 results:
+  #   monorepo:
+  #     'ESLint & Type Check': '${{ needs.lint.result }}'
+  #     'Unit Tests (Frontend)': '${{ needs.unit-front.result }}'
+  #     'Unit Tests (Backend)': '${{ needs.unit-back.result }}'
+  #     'E2E Tests (Playwright)': '${{ needs.e2e.result }}'
+  #     'Spec Health Check': '${{ needs.spec-health.result }}'
+  #     'AI Review': '${{ needs.ai-review.result }}'
+  #   front:
+  #     'ESLint & Type Check': '${{ needs.lint.result }}'
+  #     'Unit Tests (Jest)': '${{ needs.unit.result }}'
+  #     'E2E Tests (Playwright)': '${{ needs.e2e.result }}'
+  #     'Spec Health Check': '${{ needs.spec-health.result }}'
+  #     'AI Review': '${{ needs.ai-review.result }}'
+  #   back:
+  #     'ESLint & Type Check': '${{ needs.lint.result }}'
+  #     'Unit Tests (Jest)': '${{ needs.unit.result }}'
+  #     'Spec Health Check': '${{ needs.spec-health.result }}'
+  #     'AI Review': '${{ needs.ai-review.result }}'
+  #     ※ 末尾に E2Eテストはフロントエンドリポで実行される旨の注記を追加
+  # ──────────────────────────────────────────────
+  summary:
+    name: PR Summary
+    needs: NEEDS_PLACEHOLDER
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Post summary comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const results = {
+              // ← バリアントに合わせて調整すること（上記コメント参照）
+              'ESLint & Type Check': '${{ needs.lint.result }}',
+            };
+
+            const icon = r => r === 'success' ? '✅' : r === 'skipped' ? '⏭️' : '❌';
+            const label = r => r === 'success' ? '通過' : r === 'skipped' ? 'スキップ' : '失敗';
+            const artifactUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            let body = `## 🧪 CI パイプライン結果\n\n`;
+            body += `| ステージ | 結果 |\n|---------|------|\n`;
+            for (const [name, result] of Object.entries(results)) {
+              body += `| ${name} | ${icon(result)} ${label(result)} |\n`;
+            }
+            body += `\n📦 **Artifacts:** [ダウンロード](${artifactUrl})\n`;
+
+            const comments = await github.rest.issues.listComments({
+              issue_number: context.issue.number, owner: context.repo.owner, repo: context.repo.repo,
+            });
+            const botComment = comments.data.find(c => c.user.type === 'Bot' && c.body.includes('CI パイプライン結果'));
+            if (botComment) {
+              await github.rest.issues.updateComment({ comment_id: botComment.id, owner: context.repo.owner, repo: context.repo.repo, body });
+            } else {
+              await github.rest.issues.createComment({ issue_number: context.issue.number, owner: context.repo.owner, repo: context.repo.repo, body });
+            }

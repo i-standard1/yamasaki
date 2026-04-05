@@ -1,0 +1,206 @@
+# .github/workflows/ci.yml（フロントエンドリポに配置）
+# Next.js フロントエンド + E2E（バックエンドを自動checkout）
+#
+# ジョブ依存関係:
+#   lint → unit → e2e → ai-review → summary
+#
+# セットアップ:
+#   1. .github/workflows/ci.yml にコピー
+#   2. .github/review-prompt.md にレビュープロンプトをコピー
+#   3. BACKEND_REPO を実際のリポ名に変更（下記 env セクション）
+#   4. Secrets: ANTHROPIC_API_KEY
+#   5. バックエンドが private リポの場合: Secrets に BACKEND_REPO_TOKEN を設定
+#   6. Variables: REVIEW_MODEL（任意）
+
+name: CI
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  NODE_VERSION: '22'
+  # ↓ バックエンドリポ名に変更すること
+  BACKEND_REPO: ${{ github.repository_owner }}/myproject-backend
+  BACKEND_PORT: '3001'
+  BACKEND_HEALTH: 'http://localhost:3001/api/health'
+
+jobs:
+  # ──────────────────────────────────────────────
+  # Stage 1: Lint & Type check
+  # ──────────────────────────────────────────────
+  lint:
+    name: ESLint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - run: npm ci
+      - name: ESLint
+        run: npm run lint
+      - name: Type check
+        run: npx tsc --noEmit
+
+  # ──────────────────────────────────────────────
+  # Stage 2: Unit test (Jest)
+  # ──────────────────────────────────────────────
+  unit:
+    name: Unit Tests (Jest)
+    needs: [lint]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - run: npm ci
+      - name: Run Jest
+        id: jest
+        run: |
+          npx jest --ci --coverage --json --outputFile=jest-results.json 2>&1 | tee unit-output.txt || true
+          if [ -f jest-results.json ]; then
+            SUCCESS=$(python3 -c "import json; r=json.load(open('jest-results.json')); print('true' if r.get('success', False) else 'false')" 2>/dev/null || echo "false")
+          else
+            SUCCESS="false"
+          fi
+          echo "success=${SUCCESS}" >> $GITHUB_OUTPUT
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-results
+          path: |
+            jest-results.json
+            unit-output.txt
+            coverage/
+          retention-days: 30
+      - name: Fail if tests failed
+        if: steps.jest.outputs.success != 'true'
+        run: exit 1
+
+  # ──────────────────────────────────────────────
+  # Stage 3: E2E test (Playwright + backend checkout)
+  # ──────────────────────────────────────────────
+  e2e:
+    name: E2E Tests (Playwright)
+    needs: [unit]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout frontend
+        uses: actions/checkout@v4
+
+      # バックエンドリポの同名ブランチを探し、なければ main にフォールバック
+      - name: Detect backend branch
+        id: backend-branch
+        run: |
+          BRANCH="${{ github.head_ref }}"
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ env.BACKEND_REPO }}/branches/${BRANCH}")
+          if [ "$STATUS" = "200" ]; then
+            echo "ref=${BRANCH}" >> $GITHUB_OUTPUT
+          else
+            echo "ref=main" >> $GITHUB_OUTPUT
+            echo "::notice::Backend branch '${BRANCH}' not found, using main"
+          fi
+
+      - name: Checkout backend
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.BACKEND_REPO }}
+          ref: ${{ steps.backend-branch.outputs.ref }}
+          path: backend
+          # private リポの場合はコメントを外す:
+          # token: ${{ secrets.BACKEND_REPO_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install frontend deps
+        run: npm ci
+      - name: Install backend deps
+        run: cd backend && npm ci
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json', 'playwright.config.*') }}
+      - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps
+      - name: Install Playwright deps only
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps
+
+      - name: Cache Docker images
+        uses: actions/cache@v4
+        with:
+          path: /tmp/docker-cache
+          key: docker-${{ runner.os }}-${{ hashFiles('docker-compose.yml', 'backend/docker-compose.yml') }}
+          restore-keys: docker-${{ runner.os }}-
+      - name: Restore Docker cache
+        run: |
+          if [ -f /tmp/docker-cache/images.tar ]; then
+            docker load -i /tmp/docker-cache/images.tar || true
+          fi
+
+      - name: Start backend
+        run: |
+          cd backend
+          npm run start:dev &
+          npx wait-on ${{ env.BACKEND_HEALTH }} --timeout 30000
+        env:
+          NODE_ENV: test
+
+      - name: Run Playwright
+        id: playwright
+        run: |
+          npx playwright test 2>&1 | tee e2e-output.txt
+          echo "exit_code=$?" >> $GITHUB_OUTPUT
+        env:
+          CI: true
+
+      - name: Save Docker cache
+        if: always()
+        run: |
+          mkdir -p /tmp/docker-cache
+          IMAGES=$(docker images --format '{{.Repository}}:{{.Tag}}' | grep -v '<none>' | head -20)
+          if [ -n "$IMAGES" ]; then
+            docker save $IMAGES -o /tmp/docker-cache/images.tar 2>/dev/null || true
+          fi
+
+      - name: Upload E2E evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-evidence
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 30
+
+  # ──────────────────────────────────────────────
+  # 共通ジョブ: spec-health, ai-review, summary
+  # → _shared/common-jobs.yml を参照してコピーすること
+  #
+  # このバリアントでの設定:
+  #   ai-review:  needs: [e2e]
+  #   summary:    needs: [lint, unit, e2e, spec-health, ai-review]
+  #   summary の results:
+  #     'ESLint & Type Check': '${{ needs.lint.result }}'
+  #     'Unit Tests (Jest)': '${{ needs.unit.result }}'
+  #     'E2E Tests (Playwright)': '${{ needs.e2e.result }}'
+  #     'Spec Health Check': '${{ needs.spec-health.result }}'
+  #     'AI Review': '${{ needs.ai-review.result }}'
+  # ──────────────────────────────────────────────

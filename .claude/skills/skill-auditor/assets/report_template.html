@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Skill Audit Report — $run_id</title>
+<style>
+  :root {
+    --bg: #f8f9fa;
+    --surface: #ffffff;
+    --primary: #1a1a2e;
+    --text: #2d3436;
+    --text-muted: #636e72;
+    --green: #2d6a4f;
+    --yellow: #f4a261;
+    --red: #e63946;
+    --blue: #457b9d;
+    --border: #dee2e6;
+    --shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 2rem;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+  }
+
+  /* Header */
+  .header {
+    background: var(--primary);
+    color: white;
+    padding: 2rem 2.5rem;
+    border-radius: 12px;
+    margin-bottom: 2rem;
+  }
+  .header h1 { font-size: 1.75rem; margin-bottom: 0.25rem; }
+  .header p { color: rgba(255,255,255,0.7); font-size: 0.9rem; }
+
+  /* Metrics Grid */
+  .metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2.5rem;
+  }
+  .metric-card {
+    background: var(--surface);
+    padding: 1.5rem;
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    border: 1px solid var(--border);
+  }
+  .metric-card h3 {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    margin-bottom: 0.5rem;
+  }
+  .metric-card .value {
+    font-size: 2rem;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+  .metric-card .value.good { color: var(--green); }
+  .metric-card .value.warn { color: var(--yellow); }
+  .metric-card .value.bad { color: var(--red); }
+  .metric-card .value.neutral { color: var(--blue); }
+
+  /* Section */
+  h2 {
+    color: var(--primary);
+    font-size: 1.3rem;
+    margin: 2.5rem 0 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid var(--border);
+  }
+
+  /* Tables */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--surface);
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: var(--shadow);
+    border: 1px solid var(--border);
+    margin-bottom: 2rem;
+  }
+  th, td {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.9rem;
+  }
+  th {
+    background: #f1f3f5;
+    font-weight: 600;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--text-muted);
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #f8f9fa; }
+  tr.danger td { background: #fff5f5; }
+  tr.warning td { background: #fffbeb; }
+
+  /* Patch Cards */
+  .patch-card {
+    background: var(--surface);
+    padding: 1.5rem;
+    border-radius: 10px;
+    margin-bottom: 1rem;
+    box-shadow: var(--shadow);
+    border: 1px solid var(--border);
+    border-left: 5px solid var(--text-muted);
+  }
+  .patch-card.high { border-left-color: var(--red); }
+  .patch-card.medium { border-left-color: var(--yellow); }
+  .patch-card.low { border-left-color: var(--green); }
+  .patch-card h4 {
+    font-size: 1rem;
+    margin-bottom: 0.75rem;
+  }
+  .patch-card p {
+    font-size: 0.9rem;
+    margin-bottom: 0.5rem;
+  }
+
+  /* Diff */
+  .diff {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin: 1rem 0;
+  }
+  .diff pre {
+    background: #f8f9fa;
+    padding: 1rem;
+    border-radius: 6px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 0.82rem;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    line-height: 1.5;
+    overflow-x: auto;
+  }
+  .diff-old pre { border-left: 3px solid var(--red); }
+  .diff-new pre { border-left: 3px solid var(--green); }
+
+  /* Risk badges */
+  .risk-safe { color: var(--green); font-weight: 600; }
+  .risk-caution { color: var(--yellow); font-weight: 600; }
+  .risk-danger { color: var(--red); font-weight: 600; }
+
+  /* Footer */
+  .footer {
+    margin-top: 3rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    text-align: center;
+  }
+
+  @media (max-width: 768px) {
+    body { padding: 1rem; }
+    .metrics { grid-template-columns: repeat(2, 1fr); }
+    .diff { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Skill Audit Report</h1>
+  <p>Run: $run_id &mdash; Generated: $timestamp</p>
+</div>
+
+<div class="metrics">
+  <div class="metric-card">
+    <h3>Routing Precision</h3>
+    <div class="value good">$routing_precision</div>
+  </div>
+  <div class="metric-card">
+    <h3>Total Evaluated</h3>
+    <div class="value neutral">$total_evaluated</div>
+  </div>
+  <div class="metric-card">
+    <h3>Correct</h3>
+    <div class="value good">$correct</div>
+  </div>
+  <div class="metric-card">
+    <h3>False Negatives</h3>
+    <div class="value warn">$false_negatives</div>
+  </div>
+  <div class="metric-card">
+    <h3>False Positives</h3>
+    <div class="value warn">$false_positives</div>
+  </div>
+  <div class="metric-card">
+    <h3>Confused</h3>
+    <div class="value bad">$confused</div>
+  </div>
+  <div class="metric-card">
+    <h3>Coverage Gaps</h3>
+    <div class="value neutral">$coverage_gaps</div>
+  </div>
+  <div class="metric-card">
+    <h3>Competition Pairs</h3>
+    <div class="value warn">$competition_pairs</div>
+  </div>
+  <div class="metric-card">
+    <h3>Attention Budget</h3>
+    <div class="value neutral">$total_tokens tok</div>
+    <p style="font-size:0.8rem;color:var(--text-muted)">$attention_status</p>
+  </div>
+  <div class="metric-card">
+    <h3>Dead Skills</h3>
+    <div class="value">$dead_skills</div>
+  </div>
+</div>
+
+<h2>Skill Health Cards</h2>
+$skill_cards
+
+<h2>Competition Matrix</h2>
+$competition_matrix
+
+<h2>Improvement Patches</h2>
+$patches_html
+
+<div class="footer">
+  <p>Generated by skill-auditor &mdash; Claude Code Skill Portfolio Health Monitor</p>
+</div>
+
+</body>
+</html>

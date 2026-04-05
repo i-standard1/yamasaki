@@ -1,0 +1,239 @@
+# .github/workflows/ci.yml（モノレポに配置）
+# Next.js (frontend) + NestJS (backend) モノレポ用 CI パイプライン
+#
+# 想定ディレクトリ構成:
+#   apps/web/     — Next.js フロントエンド
+#   apps/api/     — NestJS バックエンド
+#   packages/     — 共有パッケージ（任意）
+#   package.json  — ワークスペースルート（npm workspaces / turborepo）
+#
+# ジョブ依存関係:
+#   lint ──→ unit-front ──┐
+#        ──→ unit-back  ──┤→ e2e → ai-review → summary
+#   spec-health ──────────┘
+#
+# セットアップ:
+#   1. .github/workflows/ci.yml にコピー
+#   2. .github/review-prompt.md にレビュープロンプトをコピー
+#   3. Secrets: ANTHROPIC_API_KEY
+#   4. Variables: REVIEW_MODEL（任意）
+#   5. apps/web, apps/api のパスを実際の構成に合わせて修正
+
+name: CI
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  # ──────────────────────────────────────────────
+  # Stage 1: Lint & Type check（front + back 両方）
+  # ──────────────────────────────────────────────
+  lint:
+    name: ESLint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - run: npm ci
+
+      # turborepo を使う場合: turbo lint typecheck
+      # 使わない場合は個別に実行:
+      - name: ESLint (frontend)
+        run: npm run lint --workspace=apps/web
+      - name: ESLint (backend)
+        run: npm run lint --workspace=apps/api
+      - name: Type check (frontend)
+        run: npx tsc --noEmit --project apps/web/tsconfig.json
+      - name: Type check (backend)
+        run: npx tsc --noEmit --project apps/api/tsconfig.json
+
+  # ──────────────────────────────────────────────
+  # Stage 2a: Unit test — frontend (Jest)
+  # ──────────────────────────────────────────────
+  unit-front:
+    name: Unit Tests (Frontend)
+    needs: [lint]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - run: npm ci
+      - name: Run Jest (frontend)
+        id: jest
+        run: |
+          cd apps/web
+          npx jest --ci --coverage --json --outputFile=jest-results.json 2>&1 | tee unit-output.txt || true
+          if [ -f jest-results.json ]; then
+            SUCCESS=$(python3 -c "import json; r=json.load(open('jest-results.json')); print('true' if r.get('success', False) else 'false')" 2>/dev/null || echo "false")
+          else
+            SUCCESS="false"
+          fi
+          echo "success=${SUCCESS}" >> $GITHUB_OUTPUT
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-front
+          path: |
+            apps/web/jest-results.json
+            apps/web/unit-output.txt
+            apps/web/coverage/
+          retention-days: 30
+      - name: Fail if tests failed
+        if: steps.jest.outputs.success != 'true'
+        run: exit 1
+
+  # ──────────────────────────────────────────────
+  # Stage 2b: Unit test — backend (Jest)
+  # ──────────────────────────────────────────────
+  unit-back:
+    name: Unit Tests (Backend)
+    needs: [lint]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - run: npm ci
+      - name: Run Jest (backend)
+        id: jest
+        run: |
+          cd apps/api
+          npx jest --ci --coverage --json --outputFile=jest-results.json 2>&1 | tee unit-output.txt || true
+          if [ -f jest-results.json ]; then
+            SUCCESS=$(python3 -c "import json; r=json.load(open('jest-results.json')); print('true' if r.get('success', False) else 'false')" 2>/dev/null || echo "false")
+          else
+            SUCCESS="false"
+          fi
+          echo "success=${SUCCESS}" >> $GITHUB_OUTPUT
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-back
+          path: |
+            apps/api/jest-results.json
+            apps/api/unit-output.txt
+            apps/api/coverage/
+          retention-days: 30
+      - name: Fail if tests failed
+        if: steps.jest.outputs.success != 'true'
+        run: exit 1
+
+  # ──────────────────────────────────────────────
+  # Stage 3: E2E test (Playwright) — unit通過後
+  # ──────────────────────────────────────────────
+  e2e:
+    name: E2E Tests (Playwright)
+    needs: [unit-front, unit-back]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - run: npm ci
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json', 'apps/web/playwright.config.*') }}
+      - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps
+      - name: Install Playwright deps only
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps
+
+      # Docker キャッシュ（DB等を使う場合）
+      - name: Cache Docker images
+        uses: actions/cache@v4
+        with:
+          path: /tmp/docker-cache
+          key: docker-${{ runner.os }}-${{ hashFiles('docker-compose.yml', 'supabase/config.toml') }}
+          restore-keys: docker-${{ runner.os }}-
+      - name: Restore Docker cache
+        run: |
+          if [ -f /tmp/docker-cache/images.tar ]; then
+            docker load -i /tmp/docker-cache/images.tar || true
+          fi
+
+      - name: Start backend
+        run: |
+          cd apps/api
+          npm run start:dev &
+          npx wait-on http://localhost:3001/api/health --timeout 30000
+        env:
+          NODE_ENV: test
+          # 必要に応じて追加:
+          # DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+
+      - name: Start frontend
+        run: |
+          cd apps/web
+          npm run dev &
+          npx wait-on http://localhost:3000 --timeout 30000
+        env:
+          NODE_ENV: test
+
+      - name: Run Playwright
+        id: playwright
+        run: |
+          cd apps/web
+          npx playwright test 2>&1 | tee e2e-output.txt
+          echo "exit_code=$?" >> $GITHUB_OUTPUT
+        env:
+          CI: true
+
+      - name: Save Docker cache
+        if: always()
+        run: |
+          mkdir -p /tmp/docker-cache
+          IMAGES=$(docker images --format '{{.Repository}}:{{.Tag}}' | grep -v '<none>' | head -20)
+          if [ -n "$IMAGES" ]; then
+            docker save $IMAGES -o /tmp/docker-cache/images.tar 2>/dev/null || true
+          fi
+
+      - name: Upload E2E evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-evidence
+          path: |
+            apps/web/playwright-report/
+            apps/web/test-results/
+          retention-days: 30
+
+  # ──────────────────────────────────────────────
+  # 共通ジョブ: spec-health, ai-review, summary
+  # → _shared/common-jobs.yml を参照してコピーすること
+  #
+  # このバリアントでの設定:
+  #   ai-review:  needs: [e2e]
+  #   summary:    needs: [lint, unit-front, unit-back, e2e, spec-health, ai-review]
+  #   summary の results:
+  #     'ESLint & Type Check': '${{ needs.lint.result }}'
+  #     'Unit Tests (Frontend)': '${{ needs.unit-front.result }}'
+  #     'Unit Tests (Backend)': '${{ needs.unit-back.result }}'
+  #     'E2E Tests (Playwright)': '${{ needs.e2e.result }}'
+  #     'Spec Health Check': '${{ needs.spec-health.result }}'
+  #     'AI Review': '${{ needs.ai-review.result }}'
+  # ──────────────────────────────────────────────

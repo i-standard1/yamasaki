@@ -1,0 +1,151 @@
+name: Auto Review & Merge
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    if: vars.IS_TEMPLATE_REPO == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Build prompt and call Claude API
+        id: review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          REVIEW_MODEL: ${{ vars.REVIEW_MODEL || 'claude-sonnet-4-5-20250929' }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          # 1. diff取得
+          git diff "origin/${BASE_REF}...HEAD" > /tmp/pr-diff.txt
+
+          # 2. Pythonでプロンプト構築＋API呼び出し＋結果解析を一括実行
+          python3 - <<'PYTHON_SCRIPT'
+          import json, os, urllib.request
+
+          # プロンプト構築
+          template = open('.github/review-prompt.md').read()
+          diff = open('/tmp/pr-diff.txt').read()[:10000]
+          title = os.environ.get('PR_TITLE', '')
+          body = os.environ.get('PR_BODY', '')
+
+          # 設計意図ファイルがあれば読み込む
+          design_intent = ''
+          try:
+              design_intent = open('DESIGN_INTENT.md').read()
+          except FileNotFoundError:
+              pass
+
+          prompt = template.replace('{{TITLE}}', title).replace('{{BODY}}', body).replace('{{DIFF}}', diff).replace('{{DESIGN_INTENT}}', design_intent)
+
+          # API呼び出し
+          payload = json.dumps({
+              "model": os.environ.get('REVIEW_MODEL', 'claude-sonnet-4-5-20250929'),
+              "max_tokens": 2000,
+              "messages": [{"role": "user", "content": prompt}]
+          }).encode()
+
+          req = urllib.request.Request(
+              'https://api.anthropic.com/v1/messages',
+              data=payload,
+              headers={
+                  'content-type': 'application/json',
+                  'x-api-key': os.environ['ANTHROPIC_API_KEY'],
+                  'anthropic-version': '2023-06-01',
+              }
+          )
+
+          try:
+              with urllib.request.urlopen(req) as res:
+                  data = json.loads(res.read())
+          except urllib.error.HTTPError as e:
+              error_body = e.read().decode()
+              print(f"API Error: {e.code} - {error_body}")
+              with open('/tmp/review-comment.txt', 'w') as f:
+                  f.write(f'APIエラー: {e.code}')
+              with open('/tmp/fixes.txt', 'w') as f:
+                  f.write('')
+              with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                  f.write('approved=false\n')
+              exit(0)
+
+          # レスポンス解析
+          text = data.get('content', [{}])[0].get('text', '')
+          print(f"Raw response: {text[:500]}")
+
+          # JSON抽出: コードフェンス内のJSONを優先抽出（フェンス後の余分なテキストに対応）
+          import re
+          fence_match = re.search(r'```(?:json)?\s*\n?(.*?)\n?```', text, re.DOTALL)
+          if fence_match:
+              json_str = fence_match.group(1).strip()
+          else:
+              json_str = text.strip()
+
+          try:
+              review = json.loads(json_str)
+          except json.JSONDecodeError:
+              print(f"Failed to parse review JSON")
+              review = {"approved": False, "comment": "レビュー結果のパースに失敗", "fixes_needed": []}
+
+          approved = str(review.get('approved', False)).lower()
+          comment = review.get('comment', 'レビューできませんでした')
+          fixes = review.get('fixes_needed', [])
+
+          with open('/tmp/review-comment.txt', 'w') as f:
+              f.write(comment)
+          with open('/tmp/fixes.txt', 'w') as f:
+              f.write('\n'.join(fixes))
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f'approved={approved}\n')
+          PYTHON_SCRIPT
+
+      - name: Post review comment
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const approved = '${{ steps.review.outputs.approved }}' === 'true';
+            let comment = '', fixes = '';
+            try { comment = fs.readFileSync('/tmp/review-comment.txt', 'utf8'); } catch { comment = '手動で確認してください。'; }
+            try { fixes = fs.readFileSync('/tmp/fixes.txt', 'utf8').trim(); } catch {}
+
+            let body = `## 🤖 自動レビュー結果\n\n`;
+            body += approved ? '✅ **承認**\n\n' : '⚠️ **要修正**\n\n';
+            body += comment + '\n\n';
+            if (fixes) {
+              body += `### 修正が必要な箇所\n`;
+              fixes.split('\n').filter(f => f).forEach(f => { body += `- ${f}\n`; });
+            }
+
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body,
+            });
+
+      - name: Enable auto-merge if approved
+        if: steps.review.outputs.approved == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # auto-merge を有効化する（実際のマージにはブランチ保護ルールの承認が必要）
+          gh pr merge ${{ github.event.pull_request.number }} \
+            --squash --auto --delete-branch
+
+  # DESIGN_INTENT.md のクリアはマージ後に別ワークフロー or 手動で実行する
+  # auto-review に contents:write を持たせてmainに直接pushするのはセキュリティリスクが高いため分離
