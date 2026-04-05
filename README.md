@@ -1,4 +1,8 @@
-# ai-dev-template
+<p align="center">
+  <img src="assets/logo.png" alt="yamasaki" width="200">
+</p>
+
+# yamasaki
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-powered-blueviolet)](https://docs.anthropic.com/en/docs/claude-code)
@@ -45,7 +49,7 @@ workspace/
 `.claude/CLAUDE.md` の `<your-org>` を自分の GitHub org / ユーザー名に置き換える：
 
 ```
-git@github.com:<your-org>/ai-dev-template.git
+git@github.com:<your-org>/yamasaki.git
 ```
 
 ### 4. セットアップ
