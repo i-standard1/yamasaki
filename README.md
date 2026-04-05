@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/social-preview.svg" alt="yamasaki" width="640">
+  <img src="assets/social-preview.svg" alt="yamasaki">
 </p>
 
 # yamasaki
