@@ -13,11 +13,11 @@ description: |
 1. .claude/CLAUDE.mdの「テンプレートリポ」からURLを取得
    - URLが未設定の場合はユーザーに確認する
 
-2. テンプレートリポを /tmp/ai-dev-template にclone（gh CLI経由でHTTPS接続）
+2. テンプレートリポを /tmp/yamasaki にclone（gh CLI経由でHTTPS接続）
    ```bash
    # URLからオーナー/リポ名を抽出（git@github.com:owner/repo.git → owner/repo）
    OWNER_REPO=$(echo "<URL>" | sed -E 's#.+[:/]([^/]+/[^/]+?)(\.git)?$#\1#')
-   gh repo clone "$OWNER_REPO" /tmp/ai-dev-template -- --depth 1
+   gh repo clone "$OWNER_REPO" /tmp/yamasaki -- --depth 1
    ```
 
 3. 差分を検出して表示する。対象は以下のみ：
@@ -58,15 +58,15 @@ description: |
 
 5. ユーザーが同意したらコピー実行
    ```bash
-   cp -r /tmp/ai-dev-template/.claude/skills/ .claude/skills/
-   cp -r /tmp/ai-dev-template/.claude/hooks/ .claude/hooks/
+   cp -r /tmp/yamasaki/.claude/skills/ .claude/skills/
+   cp -r /tmp/yamasaki/.claude/hooks/ .claude/hooks/
    # ルールはテンプレートにあるものだけ上書き（プロジェクト固有ルールは残す）
-   for f in /tmp/ai-dev-template/.claude/rules/*.md; do
+   for f in /tmp/yamasaki/.claude/rules/*.md; do
      cp "$f" .claude/rules/
    done
-   cp -r /tmp/ai-dev-template/ci-templates/ ci-templates/ 2>/dev/null || true
-   cp /tmp/ai-dev-template/.claude/CLAUDE.md .claude/CLAUDE.md
-   cp /tmp/ai-dev-template/DESIGN_INTENT.md DESIGN_INTENT.md 2>/dev/null || true
+   cp -r /tmp/yamasaki/ci-templates/ ci-templates/ 2>/dev/null || true
+   cp /tmp/yamasaki/.claude/CLAUDE.md .claude/CLAUDE.md
+   cp /tmp/yamasaki/DESIGN_INTENT.md DESIGN_INTENT.md 2>/dev/null || true
    # その他の対象ファイルも同様
    ```
 
@@ -82,7 +82,7 @@ description: |
 
 8. クリーンアップ
    ```bash
-   find /tmp/ai-dev-template -delete 2>/dev/null || true
+   find /tmp/yamasaki -delete 2>/dev/null || true
    ```
 
 9. コミット

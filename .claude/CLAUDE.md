@@ -3,7 +3,7 @@
 
 ## テンプレートリポ
 <!-- feedback-templateスキルがPR送信先として使用する -->
-git@github.com:<your-org>/ai-dev-template.git
+git@github.com:<your-org>/yamasaki.git
 
 ## Claude Code 設定
 
