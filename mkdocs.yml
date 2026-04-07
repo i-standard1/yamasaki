@@ -39,6 +39,8 @@ plugins:
   - search
   - mermaid2
   - render_swagger
+  - drawio:
+      viewer_js: https://viewer.diagrams.net/js/viewer.min.js
 
 markdown_extensions:
   - pymdownx.superfences:
