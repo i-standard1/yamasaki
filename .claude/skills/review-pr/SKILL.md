@@ -158,4 +158,4 @@ gh pr comment {PR_NUMBER} --body "$(cat review-result.md)"
 - 差分が10,000行を超える場合は変更ファイル一覧を表示して対象を絞る
 - バイナリファイル（画像、Excel等）はスキップ
 - `node_modules/`、`package-lock.json`、`.prisma/` の変更は無視
-- テンプレートリポ（`ai-dev-template`）のPRの場合は観点を自動調整（テンプレート品質重視）
+- テンプレートリポ（`yamasaki`）のPRの場合は観点を自動調整（テンプレート品質重視）
