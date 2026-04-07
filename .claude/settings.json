@@ -35,25 +35,7 @@
   },
   "sandbox": {
     "enabled": true,
-    "enableWeakerNetworkIsolation": true,
-    "allowUnsandboxedCommands": false,
-    "filesystem": {
-      "allowWrite": [
-        ".git",
-        ".git/**"
-      ],
-      "denyRead": [
-        ".env",
-        ".env.*",
-        "**/*.pem",
-        "**/*.key",
-        "**/*credentials*",
-        "~/.aws/credentials",
-        "~/.aws/config",
-        "~/.ssh",
-        "~/.gnupg"
-      ]
-    }
+    "enableWeakerNetworkIsolation": true
   },
   "hooks": {
     "PreToolUse": [
