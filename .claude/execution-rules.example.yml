@@ -1,0 +1,55 @@
+# =============================================================================
+# execution-rules.yml — プロジェクト固有のコマンド実行ルール（テンプレート）
+# =============================================================================
+#
+# このファイルを .claude/execution-rules.yml にコピーし、
+# プロジェクトに合わせてカスタマイズしてください。
+#
+# ■ フックの動作:
+#   - このファイルが存在しない → テスト・ビルド系コマンドをブロック
+#   - 存在する → ルールに従って正しい実行方法を強制
+#
+# ■ verification.mode:
+#   none       — 動作確認不要（ドキュメントのみのプロジェクト等）
+#   build-only — ビルド通過のみ確認
+#   e2e        — E2Eテストで回帰確認
+#   manual     — 手動確認（チェックリストベース）
+#
+# ■ rules[]:
+#   pattern:          正規表現（実行コマンドにマッチ）
+#   must:             必須プレフィックス（null = 制約なし）
+#   require_services: Docker サービスの起動を要求（省略可）
+#   reason:           ブロック時に表示するメッセージ
+#
+# =============================================================================
+
+# --- 例1: Docker Compose プロジェクト ---
+# verification:
+#   mode: e2e
+#
+# rules:
+#   - pattern: "npm run test"
+#     must: "docker compose exec api"
+#     reason: "テストはAPIコンテナ内で実行してください"
+#
+#   - pattern: "npx prisma"
+#     must: "docker compose exec api"
+#     reason: "PrismaはDockerネットワーク内のDBに接続する必要があります"
+#
+#   - pattern: "npm run test:e2e"
+#     must: null
+#     require_services: ["front", "api", "db"]
+#     reason: "E2EテストはDocker環境が起動している前提で実行"
+
+# --- 例2: ローカル実行プロジェクト（Docker なし）---
+# verification:
+#   mode: build-only
+#
+# rules: []
+# # ルールなし = すべてのコマンドを許可
+
+# --- 例3: ドキュメント専用プロジェクト ---
+# verification:
+#   mode: none
+#
+# rules: []
