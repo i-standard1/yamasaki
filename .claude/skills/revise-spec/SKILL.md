@@ -1,8 +1,8 @@
 ---
 name: revise-spec
 description: |
-  実装済み機能の仕様変更。要件定義書と基本設計を先に更新してからコード修正→テスト→レビューを自動実行する。
-  変更種別を自動判定し、Agent Teamsでcoder(Sonnet)とreviewer(Opus)を分離する。
+  実装済み機能の仕様変更。要件定義書と基本設計を先に更新してからコード修正→テスト→レビューを実行する。
+  変更種別を自動判定し、実装はAgent(Sonnet)に委任可能、レビューは本体が直接実行する。
   「アップロード上限を10MBに変えて」「この画面にフィールド追加して」「○○の仕様を変更して」
   「○○を修正して」「バリデーションを変えて」などのリクエストで使用する。
   既に実装済みの機能を変更するときに使う。新規実装はimplement-spec。
@@ -18,12 +18,14 @@ context:
 ---
 <!-- オンデマンド参照（必要時に読む）:
 - _shared/code-search-2stage.md → step 2
-- _shared/finish-impl.md → step 14
+- _shared/finish-impl.md → step 16
 - _shared/coding-quality.md → step 12 設計情報不足時
-- _shared/review-standards.md → step 13 レビュー基準
-- _shared/review-report.md → step 13 レビューレポート構成
-- _shared/impact-report.md → step 12d 影響範囲レポート
-- _shared/loop-protocol.md → step 13 レビューループ管理 -->
+- _shared/review-checklist.md → step 14 レビュー観点
+- _shared/review-standards.md → step 14 指摘フォーマット
+- _shared/review-report.md → step 14 レビューレポート構成
+- _shared/impact-report.md → step 12 影響範囲レポート
+- _shared/loop-protocol.md → step 14 レビューループ管理
+- .claude/agents/coder/AGENT.md → step 11 Agent委任時 -->
 
 # 実装済み機能の仕様変更
 
@@ -79,34 +81,44 @@ context:
 10. ドキュメント更新をコミット（ドキュメントとコードのコミットを分ける）
 10b. [spec-map.yml 操作ガイド](../_shared/spec-map-operations.md) に従い、該当 REQ-ID の spec_version をインクリメントする（「見た目のみ」変更ではインクリメント不要）
 
-## 実装フェーズ（Agent Teams）
+## 実装プラン作成
 
-11. エージェントチームを作成し、以下の2名を生成：
-   - **coder**（Sonnet）: 実装担当
-   - **reviewer**（Opus）: レビュー担当
+10c. 変更内容に基づき `impl-plans/[REQ-ID].md` を作成（または更新）する：
+   - 変更対象ファイルと変更内容の一覧（依存関係順）
+   - 流用・修正すべき既存コード（grep結果から特定）
+   - 判断メモ（WHY NOT）: スコープ外とした変更・仮採用した判断の理由
+   - テスト計画（追加・修正するテストケース）
+   - 実装プランをコミット: `docs: [REQ-ID] 実装プラン作成`
 
-12. coderが実行：
-   a. 更新済みの要件定義書と基本設計を読み、その通りにコード・テストを修正する
-      - `docs/design/shared-components.md` が存在すれば読み、既存の共通コンポーネントを活用する（再発明しない）
-      - 変更で新たに共通化すべきパターンが見つかった場合は共通化し、shared-components.md に追記する
-   b. [spec-map.yml 操作ガイド](../_shared/spec-map-operations.md) に従い、修正ファイルの confirmed を更新
-   c. UIを含む変更の場合、E2Eテストも追加・修正する
-   d. [影響範囲レポート](../_shared/impact-report.md) を docs/impact-reports/[Spec ID].md に作成（または既存を更新）
-   e. 完了したらreviewerにメッセージ
+## 実装フェーズ
 
-13. reviewerが実行：
-    - 自身でも2段階探索を実行してcoderの探索漏れがないか検証
-    - **共通コンポーネントの活用チェック**: `shared-components.md` に記載のコンポーネントで代替できる箇所に独自実装がないか検証
-    - **コンポーネント粒度チェック**: feature-design.md のセクション4に従ったコンポーネント分割がされているか検証
-    - 要件通りの実装か、変更種別の妥当性、受入条件、影響範囲を検証
-    - 指摘フォーマット・深刻度・信頼度は [review-standards](../_shared/review-standards.md) に従う（信頼度80以上のみ修正依頼）
+11. 実装プラン（`impl-plans/[REQ-ID].md`）の順序に従ってコードを修正する。
+    以下の基準で実装方法を自動判断する：
+    - **本体が直接実装する**（デフォルト）: 途中判断が必要な場合は規模に関係なく本体が実行する
+    - **Agent に委任する**: 実装プランの全ステップが明確で途中判断が不要な場合のみ。`Agent(subagent_type: "coder")` で起動し、実装プランのパスと設計書パスリストを prompt に渡す
+
+12. 実装時の共通ルール（本体/Agent 共通）：
+   - 更新済みの要件定義書と基本設計の通りにコード・テストを修正する
+   - 共通コンポーネントが使える箇所では既存のものを使う（再発明しない）
+   - [spec-map.yml 操作ガイド](../_shared/spec-map-operations.md) に従い、修正ファイルの confirmed を更新
+   - UIを含む変更の場合、E2Eテストも追加・修正する
+   - [影響範囲レポート](../_shared/impact-report.md) を docs/impact-reports/[Spec ID].md に作成（または更新）
+
+## レビューフェーズ（本体が直接実行）
+
+13. [レビューチェックリスト](../_shared/review-checklist.md) を読み、全観点を確認する
+    - 指摘フォーマット・深刻度・信頼度は [review-standards](../_shared/review-standards.md) に従う（信頼度80以上のみ修正対象）
     - レポート構成は [review-report](../_shared/review-report.md) に従う
-    - 指摘→修正→再レビュー（最大3ループ、[loop-protocol](../_shared/loop-protocol.md) に従う）
+    - 指摘があれば修正→再レビュー（最大3ループ、[loop-protocol](../_shared/loop-protocol.md) に従う）
 
-14. リーダーが仕上げ：
-    - `.claude/skills/_shared/finish-impl.md` の共通仕上げ手順を実行
-    - チームをシャットダウン
-    - 次のステップを提案（「他に変更する箇所はありますか？」）
+## 仕上げ
+
+14. `.claude/skills/_shared/finish-impl.md` の共通仕上げ手順を実行
+15. 次のステップを提案（「他に変更する箇所はありますか？」）
+
+## コンテキスト管理
+- `/cost` でトークン使用量を随時確認する
+- 使用率が70%を超えたら、作業状態を `impl-plans/[REQ-ID].md` の末尾に追記し、新セッションでの再開を提案する
 
 ## ルール
 - ドキュメントを確定させてからコードを変更すること

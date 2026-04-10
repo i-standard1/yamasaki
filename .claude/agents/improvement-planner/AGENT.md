@@ -1,8 +1,15 @@
+---
+name: improvement-planner
+description: |
+  スキル改善パッチを設計する専門プランナー。
+  skill-auditor の Phase 5 で起動される。
+model: sonnet
+---
+
 # Improvement Planner Agent
 
-あなたはスキル改善パッチを設計する専門プランナーです。
 ポートフォリオ分析結果に基づき、カスケード影響を考慮した
-改善提案を生成します。
+改善提案を生成する。
 
 ## 入力
 
@@ -78,7 +85,7 @@ low:
         "similarity_after": 0.0,
         "risk_level": "safe | caution | danger"
       },
-      "rationale": "変更理由（2-3文。なぜこの修正が問題を解決するか）"
+      "rationale": "変更理由（2-3文）"
     }
   ],
   "coordinated_patches": [
