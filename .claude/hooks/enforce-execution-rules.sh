@@ -7,6 +7,8 @@
 #    テスト・ビルド系コマンドをブロックし、ルール定義を促す
 # 2. 存在する場合:
 #    コマンドがルールに該当すれば、正しい実行方法を強制する
+# 3. require_services が定義されている場合:
+#    Docker サービスの稼働を確認し、停止中ならブロックする
 #
 # exit 0 = 許可, exit 2 = ブロック
 # =============================================================================
@@ -140,6 +142,98 @@ $REASON
 実行ルール定義: $RULES_FILE
 MSG
   exit 2
+fi
+
+# --- require_services チェック ---
+# ルールに require_services が定義されている場合、Docker サービスの稼働を確認
+SERVICES_CHECK=$(python3 << PYEOF
+import re
+
+command = '''$COMMAND'''
+rules_file = '''$RULES_FILE'''
+
+current_rule = {}
+rules = []
+in_rules = False
+in_services = False
+
+with open(rules_file) as f:
+    for line in f:
+        stripped = line.strip()
+        if stripped.startswith('#') or not stripped:
+            continue
+        if stripped == 'rules:':
+            in_rules = True
+            continue
+        if not in_rules:
+            continue
+        if stripped.startswith('- pattern:'):
+            if current_rule:
+                rules.append(current_rule)
+            current_rule = {'pattern': stripped.split('"')[1] if '"' in stripped else stripped.split("'")[1]}
+            in_services = False
+        elif stripped.startswith('require_services:') and current_rule:
+            services_str = stripped[17:].strip()
+            # インライン配列: ["front", "api", "db"]
+            if '[' in services_str:
+                import json
+                current_rule['require_services'] = json.loads(services_str.replace("'", '"'))
+            in_services = True
+        elif stripped.startswith('must:') and current_rule:
+            in_services = False
+        elif stripped.startswith('reason:') and current_rule:
+            in_services = False
+        elif stripped.startswith('scope:') and current_rule:
+            in_services = False
+
+    if current_rule:
+        rules.append(current_rule)
+
+for rule in rules:
+    pattern = rule.get('pattern', '')
+    if not re.search(pattern, command):
+        continue
+    services = rule.get('require_services', [])
+    if services:
+        print(','.join(services))
+        break
+PYEOF
+)
+
+if [ -n "$SERVICES_CHECK" ]; then
+  # Docker Compose のプロジェクトディレクトリを探す
+  COMPOSE_DIR=""
+  SEARCH_DIR="$(pwd)"
+  for _ in 1 2 3 4 5; do
+    if [ -f "$SEARCH_DIR/docker-compose.yml" ]; then
+      COMPOSE_DIR="$SEARCH_DIR"
+      break
+    fi
+    SEARCH_DIR="$(dirname "$SEARCH_DIR")"
+  done
+
+  if [ -n "$COMPOSE_DIR" ]; then
+    MISSING=""
+    IFS=',' read -ra REQUIRED_SERVICES <<< "$SERVICES_CHECK"
+    for svc in "${REQUIRED_SERVICES[@]}"; do
+      STATUS=$(docker compose -f "$COMPOSE_DIR/docker-compose.yml" ps --format '{{.Service}} {{.State}}' 2>/dev/null | grep "^$svc " | awk '{print $2}')
+      if [ "$STATUS" != "running" ]; then
+        MISSING="$MISSING $svc"
+      fi
+    done
+
+    if [ -n "$MISSING" ]; then
+      cat >&2 <<MSG
+BLOCKED: 必要な Docker サービスが起動していません
+
+停止中のサービス:$MISSING
+
+以下のコマンドで起動してください:
+  cd $COMPOSE_DIR && docker compose up -d$MISSING
+MSG
+      exit 2
+    fi
+  fi
 fi
 
 # 許可
