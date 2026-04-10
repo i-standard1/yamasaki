@@ -1,8 +1,8 @@
 ---
 name: implement-spec
 description: |
-  Specに基づく新規機能実装。要件定義書と基本設計を読んでコード実装→テスト→レビューを自動実行する。
-  Agent Teamsでcoder(Sonnet)とreviewer(Opus)を分離する。
+  Specに基づく新規機能実装。要件定義書と基本設計を読んで実装プラン作成→コード実装→テスト→レビューを実行する。
+  実装はAgent(Sonnet)に委任可能、レビューは本体が直接実行する。
   「REQ-AUTH-001を実装して」「ログイン機能を作って」「○○を実装して」
   「これを作って」「実装に入って」などのリクエストで使用する。
   要件定義書が存在する未実装機能を新規実装するときに使う。既存機能の変更はrevise-spec。
@@ -15,12 +15,14 @@ context:
 ---
 <!-- オンデマンド参照（必要時に読む）:
 - _shared/code-search-2stage.md → step 7
-- _shared/finish-impl.md → step 16
+- _shared/finish-impl.md → step 18
 - _shared/coding-quality.md → step 13 設計情報不足時
-- _shared/review-standards.md → step 14 レビュー基準
-- _shared/review-report.md → step 14 レビューレポート構成
-- _shared/impact-report.md → step 13j 影響範囲レポート作成時
-- _shared/loop-protocol.md → step 14 レビューループ管理時 -->
+- _shared/review-checklist.md → step 15 レビュー観点
+- _shared/review-standards.md → step 15 指摘フォーマット
+- _shared/review-report.md → step 15 レビューレポート構成
+- _shared/impact-report.md → step 13 影響範囲レポート作成時
+- _shared/loop-protocol.md → step 15 レビューループ管理時
+- .claude/agents/coder/AGENT.md → step 12 Agent委任時 -->
 
 # Specに基づく機能実装
 
@@ -65,14 +67,16 @@ context:
    - 基本設計書（architecture.md, db-design.md, openapi.yaml）が存在し、Specと整合しているか
    - 未通過項目がある場合はユーザーに提示し、続行するか確認する。ユーザーが中止を選んだ場合は要件定義書のステータスを「実装中」から元に戻す
 10. CLAUDE.mdのブランチ戦略に従い、feature/[Spec ID] ブランチを作成
-11. **コンテキストサマリーの作成（coder への情報伝達）** — 準備フェーズで読んだ情報から、coderに必要な要点だけを抽出したサマリーを作成する。coderはこのサマリーを起点に実装する（全ファイルを再読しない）：
-   - 実装対象の概要（背景・目的・受入条件の要約）
+11. **実装プランの作成** — 準備フェーズで読んだ情報を元に `impl-plans/[REQ-ID].md` を作成する：
+   - 実装順序（ファイル単位、依存関係順に）
+   - 各ステップで作成/変更するファイルパスと概要
+   - 流用すべき既存コード（grep結果から特定したファイル:行番号）
    - 使用するAPIエンドポイント一覧（openapi.yaml から抽出）
    - 使用するテーブル・カラム一覧（logic.md / db-schema.md から抽出）
-   - 活用すべき共通コンポーネント一覧（shared-components.md から該当分を抽出）
-   - ドメイン間IF（interfaces/ から該当分を抽出。orchestrate経由の場合のみ）
-   - 2段階探索で見つけた関連コードファイルの一覧と概要
-   - 注意事項（仮採用した判断、依存Specの状態、品質ゲートの例外等）
+   - 活用すべき共通コンポーネント一覧（shared-components.md から抽出）
+   - 判断メモ（WHY NOT）: やらないこと・スコープ外の理由・仮採用した判断
+   - テスト計画（何をどの順でテストするか）
+   - 実装プランをコミット: `docs: [REQ-ID] 実装プラン作成`
 
 ## 設計書間の優先順位・判断ヒューリスティクス
 
@@ -81,69 +85,47 @@ context:
 
 ## テスト先行フェーズ（TDD: RED）
 
-11. `docs/design/test-design.md` が存在するか確認する
+11b. `docs/design/test-design.md` が存在するか確認する
    - **存在する場合:** gen-tests をTDDモードで呼び出し、テストコードを先行生成する
      - ユニットテスト + E2Eテスト（test.skip付き）がRED状態で生成される
      - コミット: `test: [REQ-ID] テストコードを先行生成（RED状態）`
    - **存在しない場合:** 従来フロー（実装フェーズでテストも同時生成）にフォールバック
    - **注:** test-design.md は detail-design スキルの成果物。TDDを使いたい場合は先に detail-design を実行すること
 
-## 実装フェーズ（Agent Teams: GREEN）
+## 実装フェーズ
 
-12. エージェントチームを作成し、以下の2名を生成：
-    - **coder**（Sonnet）: 実装担当 — **テストをGREENにするコードを書く**
-    - **reviewer**（Opus）: レビュー担当
+12. 実装プラン（`impl-plans/[REQ-ID].md`）の順序に従ってコードを実装する。
+    以下の基準で実装方法を自動判断する：
+    - **本体が直接実装する**（デフォルト）: 途中判断が必要な場合は規模に関係なく本体が実行する
+    - **Agent に委任する**: 実装プランの全ステップが明確で途中判断が不要な場合のみ。`Agent(subagent_type: "coder")` で起動し、実装プランのパスと設計書パスリストを prompt に渡す
 
-13. coderが実行：
-   a. **リーダーが作成したコンテキストサマリー（準備フェーズ ステップ11）を読む**。サマリーで不足する詳細がある場合のみ、該当する設計書の該当セクションをピンポイントで参照する（全ファイルを再読しない）
-      - 「背景・目的」に既存機能の置換・廃止が示唆されている場合、既存UIを残さず置き換える
-      - 要件に書かれていない機能は実装しない
-      - `openapi.yaml` のリクエスト/レスポンス定義に忠実に実装する（openapi.yaml が API の Single Source of Truth）
-   b. **先行生成されたテストコードを読み、テストケースの期待値を把握する**
-      - テストが「何を検証しているか」が実装の合格基準になる
-      - `test.skip()` になっているE2Eテストも読み、画面の期待動作を把握する
-   c. `docs/design/shared-components.md` が存在すれば読み、既存の共通コンポーネントを把握する
-      - 共通コンポーネントが使える箇所では**必ず既存のものを使う**（再発明しない）
-   d. feature-design.md のセクション4「ページ固有コンポーネント設計」を確認する
-      - コンポーネント構成図に従ってページ内のUI分割を実装する
-      - ページ固有コンポーネントは `app/[ページ]/_components/` に配置する
-      - 粒度レベル（L1〜L4）に従い、適切な単位で切り出す
-   e. 類似処理がないかgrepで調査
-      - 類似処理が見つかった場合、共通化を検討し、共通化する場合は既存の呼び出し元も修正する
-      - 共通化しない判断をした場合、その理由をコミットメッセージに記載
-   f. コードを実装 — **ユニットテストが全てGREENになるまで繰り返す**
-      - UIを含む場合：CLAUDE.mdの「デザイン方針」に従う
-      - 新たに共通化したコンポーネントがあれば `docs/design/shared-components.md` に追記する
-      - ページ固有コンポーネントは feature-design.md のセクション4に従って配置する
-   g. [spec-map.yml 操作ガイド](../_shared/spec-map-operations.md) に従い、実装ファイルのエントリを追加
-   h. **E2Eテストの `test.skip()` を解除し、全てGREENになるまで修正する**
-      - 認証が必要なテスト → CLAUDE.mdの「テスト設定」の認証バイパスを使う
-      - 外部APIを使うテスト → CLAUDE.mdの「テスト設定」のモックモードを使う
-   i. テスト設計書がある場合、設計書にないが実装中に発見した追加テストケースがあれば補足する
-   j. [影響範囲レポート](../_shared/impact-report.md) を docs/impact-reports/[Spec ID].md に作成
-   k. 完了したらreviewerにメッセージ
+13. 実装時の共通ルール（本体/Agent 共通）：
+   - 要件に書かれていない機能は実装しない
+   - `openapi.yaml` のリクエスト/レスポンス定義に忠実に実装する
+   - 共通コンポーネントが使える箇所では既存のものを使う（再発明しない）
+   - ユニットテストが全てGREENになるまで繰り返す
+   - E2Eテストの `test.skip()` を解除し、全てGREENになるまで修正する
+   - [spec-map.yml 操作ガイド](../_shared/spec-map-operations.md) に従い、実装ファイルのエントリを追加
+   - [影響範囲レポート](../_shared/impact-report.md) を docs/impact-reports/[Spec ID].md に作成
 
-14. reviewerが実行：
-   - **まず影響範囲レポートの「読取ファイル一覧」を確認し、coderが読んだファイルを把握する**
-   - coderの読取ファイルを起点に、2段階探索の**Step 2（キーワード検索）のみ**を実行して探索漏れがないか検証（Step 1 は coder が既に実施済みのため省略）
-   - **テスト設計書 vs 実装テストの網羅性チェック**（test-design.md がある場合）: テストケースが全てテストコードに反映されているか検証
-   - **共通コンポーネントの活用チェック**: `shared-components.md` に記載のコンポーネントで代替できる箇所に独自実装がないか検証
-   - **コンポーネント粒度チェック**: feature-design.md のセクション4に従ったコンポーネント分割がされているか、1ファイルに過度にUIが詰め込まれていないか検証
-   - **要件の「背景・目的」と実装が整合しているか検証**（既存UIの置換漏れ、設計意図の逸脱がないか）
-   - 要件の受入条件通りに実装されているか検証
-   - **全テストがGREENであることを確認**
-   - エッジケース、セキュリティ、CLAUDE.md規約を検証
-   - 影響範囲レポートをレビュー
-   - 指摘フォーマット・深刻度・信頼度は [review-standards](../_shared/review-standards.md) に従う（信頼度80以上のみ修正依頼）
-   - レポート構成は [review-report](../_shared/review-report.md) に従う
-   - 指摘→修正→再レビュー（最大3ループ、[loop-protocol](../_shared/loop-protocol.md) に従う）
+14. 実装プランの判断メモに変更が生じた場合は、実装プランを更新してコミットする
 
-## 仕上げ（リーダー）
+## レビューフェーズ（本体が直接実行）
 
-15. 要件定義書のステータスを「完了」に更新、overview.mdも同期
-16. `.claude/skills/_shared/finish-impl.md` を読み、共通仕上げ手順を実行する
-17. チームをシャットダウン
+15. [レビューチェックリスト](../_shared/review-checklist.md) を読み、全観点を確認する
+    - 指摘フォーマット・深刻度・信頼度は [review-standards](../_shared/review-standards.md) に従う（信頼度80以上のみ修正対象）
+    - レポート構成は [review-report](../_shared/review-report.md) に従う
+    - 指摘があれば修正→再レビュー（最大3ループ、[loop-protocol](../_shared/loop-protocol.md) に従う）
+
+## 仕上げ
+
+16. 要件定義書のステータスを「完了」に更新、overview.mdも同期
+17. `.claude/skills/_shared/finish-impl.md` を読み、共通仕上げ手順を実行する
 18. 次のステップを提案（「次の機能を実装しますか？」「テストを補強しますか？」）
+
+## コンテキスト管理
+- `/cost` でトークン使用量を随時確認する
+- 使用率が70%を超えたら、作業状態を `impl-plans/[REQ-ID].md` の末尾に追記し、新セッションでの再開を提案する
 
 ## ルール
 - 要件の受入条件に書かれていない機能を実装しない
