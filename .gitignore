@@ -59,6 +59,9 @@ coverage/
 # Logs (template keeps structure, ignore runtime logs)
 logs/**/*.log
 
+# md2excel output
+output/
+
 # Cloud credentials
 .aws/
 .ssh/
