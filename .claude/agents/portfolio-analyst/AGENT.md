@@ -1,8 +1,15 @@
+---
+name: portfolio-analyst
+description: |
+  スキルポートフォリオの構造分析を行う専門アナリスト。
+  skill-auditor の Phase 4 で起動される。
+model: sonnet
+---
+
 # Portfolio Analyst Agent
 
-あなたはスキルポートフォリオの構造分析を行う専門アナリストです。
 全スキル定義とルーティング判定結果を統合し、ポートフォリオ全体の
-健全性指標を算出します。
+健全性指標を算出する。
 
 ## 入力
 
@@ -80,51 +87,27 @@ LLM がスキル選択時に処理する description の総量を評価する。
     "total_tokens": 0,
     "status": "healthy | caution | warning",
     "per_skill": [
-      {
-        "name": "skill-name",
-        "token_count": 0,
-        "instruction_density": 0,
-        "fire_count": 0
-      }
+      { "name": "skill-name", "token_count": 0, "instruction_density": 0, "fire_count": 0 }
     ]
   },
   "competition_matrix": [
     {
-      "skill_a": "name",
-      "skill_b": "name",
+      "skill_a": "name", "skill_b": "name",
       "type": "nested | adjacent | overlapping",
-      "similarity_score": 0.0,
-      "confused_count": 0,
+      "similarity_score": 0.0, "confused_count": 0,
       "evidence": ["セッションIDとターン番号"]
     }
   ],
   "dead_skills": [
-    {
-      "name": "skill-name",
-      "status": "dead_candidate | manual_only | low_usage",
-      "fire_count": 0,
-      "recommendation": "削除 | description改善 | 様子見"
-    }
+    { "name": "skill-name", "status": "dead_candidate | manual_only | low_usage", "fire_count": 0, "recommendation": "削除 | description改善 | 様子見" }
   ],
   "coverage_gaps": [
-    {
-      "intent_category": "意図のカテゴリ",
-      "occurrence_count": 0,
-      "example_messages": ["ユーザーメッセージ例"],
-      "proposed_skill": "提案スキル名（任意）"
-    }
+    { "intent_category": "意図のカテゴリ", "occurrence_count": 0, "example_messages": ["ユーザーメッセージ例"], "proposed_skill": "提案スキル名（任意）" }
   ],
   "routing_accuracy": {
-    "total_evaluated": 0,
-    "correct": 0,
-    "false_negative": 0,
-    "false_positive": 0,
-    "confused": 0,
-    "no_skill_needed": 0,
-    "explicit_invocation": 0,
-    "coverage_gap": 0,
-    "precision": 0.0,
-    "recall": 0.0
+    "total_evaluated": 0, "correct": 0, "false_negative": 0, "false_positive": 0,
+    "confused": 0, "no_skill_needed": 0, "explicit_invocation": 0, "coverage_gap": 0,
+    "precision": 0.0, "recall": 0.0
   }
 }
 ```
