@@ -10,10 +10,15 @@ description: |
 
 ## 基本方針
 
-**テンプレートにあるファイルは原則すべて上書きで取り込む。**
-除外は以下の最小限リストのみ。このリストに載っていないファイルは全て同期対象。
+ファイルを3カテゴリに分けて扱う:
 
-## 除外リスト（これだけがスキップされる）
+1. **除外**（完全にスキップ）: プロジェクト固有設定ファイル
+2. **保護**（add-only: ローカルに無ければ新規取り込み、既存なら**絶対に上書きしない**）: プロジェクトが生成・編集する成果物ドキュメント
+3. **同期**（上記以外すべて: 上書きで取り込む）: テンプレ定義・スキル・ルール・CIテンプレ等
+
+**保護カテゴリを設けている理由:** テンプレリポ側の `docs/` 配下（`docs/templates/` 以外）にはスタブ／プレースホルダーのひな形が置かれている。これを無条件で上書きすると、プロジェクトが自動生成・手動編集した設計書・API仕様書・要件定義がテンプレートのスタブで破壊される。過去の事故（PR #59）ではこれで openapi.yaml / api-spec.md / architecture.md / db-design.md 等が空スタブ化した。
+
+## 除外リスト（完全にスキップ）
 
 | ファイル | 理由 |
 |---------|------|
@@ -27,8 +32,25 @@ description: |
 | `.github/workflows/ci.yml` | generate-ci.pyで生成済み |
 | `.github/demo-screenshots/` | テンプレートリポ固有のデモ画像 |
 
-**除外リストにないファイルをスキップしてはいけない。**
-判断に迷ったら取り込む。取り込んで問題があれば後から戻せるが、漏れは気づきにくい。
+## 保護リスト（add-only: 既存ファイルは上書きしない）
+
+以下のパスは、プロジェクトが `init-spec` / `draft-spec` / `spec-all` / `implement-spec` 等のスキルで生成・編集する成果物。テンプレ側に同名ファイル（スタブ）があっても、**ローカルに既に存在する場合は上書きしない**。ローカルに無ければ新規作成のみ許可する。
+
+| パスパターン | 内容 |
+|-------------|------|
+| `docs/**` （ただし `docs/templates/**` を除く） | プロジェクトの要件定義・設計書・API仕様・テスト仕様・品質ゲート・ホームページ・CSS等 |
+| `domains/**`（ただし `domains/_template/**` を除く） | ドメイン別の実装計画・ドキュメント |
+| `interfaces/**`（ただし `interfaces/_template/**` を除く） | リポ間連携インターフェース定義 |
+| `tasks/**`（ただし `tasks/.gitkeep` を除く） | 作業状態・セッション履歴・lessons |
+| `impl-plans/**` | 実装プラン（作業中の一時ファイル） |
+| `DESIGN_INTENT.md` | auto-review 用の設計意図メモ |
+
+**判定の優先順位:** 除外 > 保護 > 同期。除外パスは同期対象にしない。保護パスはローカルに存在すれば同期対象にしない。それ以外のテンプレ側ファイルは全て同期（上書き）する。
+
+**`docs/templates/` は同期対象。** テンプレート定義そのもののSingle Source of Truthなので、上書きで最新化する。
+
+**保護リストにないファイル（`.claude/**`, `ci-templates/**`, `docs/templates/**` 等）はスキップしてはいけない。**
+判断に迷ったら保護側に倒す。プロジェクト固有コンテンツを誤って上書きする方が、テンプレ更新が遅れるよりも被害が大きい。
 
 ## 手順
 
@@ -82,10 +104,45 @@ comm -13 /tmp/tpl_files.txt /tmp/local_files.txt | grep -E \
 - **削除**: テンプレートにどこにも対応物がない → 削除
 - **.gitkeep置換**: .gitkeepが実ファイルに置き換わった → .gitkeep削除
 
-### 3. 除外リストを適用してフィルタリング
+### 3. 除外リスト・保護リストを適用してフィルタリング
 
-2a・2bの結果から除外リストに該当するファイルを除く。
-**除外リストに載っていないファイルは全て同期対象に含める。**
+2a・2bの結果を以下のルールで分類する:
+
+1. **除外パス**に該当 → 完全にスキップ（同期対象にしない）
+2. **保護パス**に該当:
+   - ローカルに同パスが**存在する場合** → スキップ（上書きしない）
+   - ローカルに同パスが**存在しない場合** → 「新規取り込み」として追加対象に含める
+3. 上記以外 → 通常の同期対象に含める（上書きで取り込む）
+
+判定用シェル例:
+
+```bash
+is_excluded() {
+  case "$1" in
+    CLAUDE.md|.claude/settings.json|.claude/settings.local.json) return 0 ;;
+    mkdocs.yml|README.md|spec-map.yml|CHANGELOG.md) return 0 ;;
+    .github/workflows/ci.yml) return 0 ;;
+    .github/demo-screenshots/*) return 0 ;;
+  esac
+  return 1
+}
+
+is_protected() {
+  case "$1" in
+    docs/templates/*) return 1 ;;     # templates/ 配下は除外（同期対象）
+    docs/*) return 0 ;;
+    domains/_template/*) return 1 ;;
+    domains/*) return 0 ;;
+    interfaces/_template/*) return 1 ;;
+    interfaces/*) return 0 ;;
+    tasks/.gitkeep) return 1 ;;
+    tasks/*) return 0 ;;
+    impl-plans/*) return 0 ;;
+    DESIGN_INTENT.md) return 0 ;;
+  esac
+  return 1
+}
+```
 
 ### 4. 差分をユーザーに提示して確認を取る
 
@@ -105,6 +162,12 @@ comm -13 /tmp/tpl_files.txt /tmp/local_files.txt | grep -E \
   移動: .claude/skills/skill-auditor/agents/*.md → .claude/agents/*/AGENT.md
   削除: docs/templates/phase2/screen-design.md（テンプレートで廃止）
   置換: domains/.gitkeep → domains/_template/CLAUDE.md
+  ...
+
+【保護スキップ】N件（ローカルに既存のため上書きしない）
+  保護: docs/api/openapi.yaml — プロジェクト固有（保護リスト）
+  保護: docs/design/architecture.md — プロジェクト固有（保護リスト）
+  保護: docs/requirements/overview.md — プロジェクト固有（保護リスト）
   ...
 
 【除外】N件（スキップ）
@@ -139,20 +202,24 @@ done
 
 ### 6. 検証（省略してはいけない）
 
-**適用後に必ず全件検証を行う:**
+**適用後に必ず全件検証を行う。**
+
+同期対象ファイル（除外・保護スキップ以外）がテンプレートと一致することを確認する。保護パスでスキップしたファイルは「元のローカル内容が保持されている」だけ確認（テンプレとの差分は当然発生するので DIFF として数えない）:
 
 ```bash
-# テンプレートの全ファイルについて、除外リスト以外は内容が一致することを確認
 cat /tmp/tpl_files.txt | while read f; do
-  # 除外リストに該当するものはスキップ
+  # 除外リストはスキップ
   case "$f" in
     CLAUDE.md|.claude/settings.json|.claude/settings.local.json|mkdocs.yml|README.md|spec-map.yml|CHANGELOG.md) continue ;;
     .github/workflows/ci.yml|.github/demo-screenshots/*) continue ;;
   esac
-  # .claude/CLAUDE.md はプレースホルダー復元があるので除外
   [ "$f" = ".claude/CLAUDE.md" ] && continue
-  # sync-template/SKILL.md 自体は今回改善しているので除外
   [ "$f" = ".claude/skills/sync-template/SKILL.md" ] && continue
+
+  # 保護リスト該当で、ローカルに元々存在したファイルはスキップ（上書きしない想定）
+  if is_protected "$f" && [ -f "$f" ] && grep -qxF "$f" /tmp/local_files.txt; then
+    continue
+  fi
 
   if [ -f "$f" ]; then
     tpl=$(git show template/main:"$f" | md5)
@@ -166,6 +233,14 @@ done
 
 **MISSING または DIFF が1件でもあれば、原因を調査して修正する。**
 検証をパスするまでコミットしない。
+
+**保護パスの検証:** 保護スキップしたファイルは、同期前後で md5 が変わらないことを別途確認する:
+
+```bash
+# 同期前に /tmp/local_hashes.txt を作っておく（手順1の直後推奨）
+# md5 `cat "$f"` > /tmp/local_hashes.txt  …など
+# 同期後、保護スキップ対象が変わっていないことを確認
+```
 
 ### 7. ci-templates/ が更新された場合の案内
 ```
@@ -184,9 +259,11 @@ git commit -m "chore: sync template to latest"
 ## ルール
 
 ### 同期の原則
-- **テンプレートにあるファイルは原則すべて上書き。除外リストだけがスキップされる**
-- 除外リストにないファイルを独自判断でスキップしてはいけない
-- 判断に迷ったら取り込む
+- 除外パスは完全にスキップする
+- 保護パスはローカルに既存なら上書きしない（新規ファイルなら取り込む）
+- それ以外はすべて上書きで取り込む
+- 保護リストに該当しないファイルを独自判断でスキップしてはいけない
+- 判断に迷ったら保護側に倒す（プロジェクト固有コンテンツ破壊を優先的に避ける）
 
 ### 構造変更
 - 構造変更（移動・リネーム・削除・.gitkeep置換）は必ず検出・報告・適用する
