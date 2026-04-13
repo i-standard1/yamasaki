@@ -63,3 +63,6 @@ logs/**/*.log
 .aws/
 .ssh/
 .gnupg/
+
+# mkdocs build output
+site/
