@@ -42,6 +42,10 @@ plugins:
   - drawio:
       viewer_js: https://viewer.diagrams.net/js/viewer.min.js
 
+hooks:
+  - docs/overrides/hooks/review_markers.py
+  - docs/overrides/hooks/review_index.py
+
 markdown_extensions:
   - pymdownx.superfences:
       custom_fences:
@@ -53,15 +57,22 @@ markdown_extensions:
   - admonition
   - pymdownx.details
   - tables
+  - attr_list
+  - md_in_html
 
 exclude_docs: |
   !templates/
 
 extra_css:
   - stylesheets/extra.css
+  - stylesheets/review.css
+
+extra_javascript:
+  - javascripts/review.js
 
 nav:
   - ホーム: index.md
+  - 🔴 未承認レビュー: review-pending.md
   - 要件定義:
     - requirements/index.md
     - 概要: requirements/overview.md
