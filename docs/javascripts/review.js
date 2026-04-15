@@ -55,12 +55,29 @@
       });
   }
 
+  // 外部リンク（github.com 等）を新しいタブで開く
+  function openExternalLinksInNewTab() {
+    document.querySelectorAll("a[href]").forEach(function (a) {
+      if (a.hostname && a.hostname !== location.hostname) {
+        a.setAttribute("target", "_blank");
+        a.setAttribute("rel", "noopener noreferrer");
+      }
+    });
+  }
+
   // Material for MkDocs は instant loading を使うため、ページ遷移ごとに再バインド
   if (typeof document$ !== "undefined" && document$.subscribe) {
-    document$.subscribe(setup);
+    document$.subscribe(function () {
+      setup();
+      openExternalLinksInNewTab();
+    });
   } else if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", setup);
+    document.addEventListener("DOMContentLoaded", function () {
+      setup();
+      openExternalLinksInNewTab();
+    });
   } else {
     setup();
+    openExternalLinksInNewTab();
   }
 })();
