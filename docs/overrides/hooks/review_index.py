@@ -105,7 +105,7 @@ def _render(entries: list[dict]) -> str:
     lines.append("|------|----|---------|------|")
     for e in entries:
         url_path = e["file"].removesuffix(".md") + "/"
-        link = f'<a href="/{url_path}#{e["id"]}">{e["file"]}</a>'
+        link = f'<a href="/{url_path}#{e["id"]}" target="_blank" rel="noopener noreferrer">{e["file"]}</a>'
         excerpt_safe = e["excerpt"].replace("|", "\\|")
         label = TYPE_LABELS.get(e["kind"], e["kind"])
         lines.append(f'| {label} | `{e["id"]}` | {link} | {excerpt_safe} |')
