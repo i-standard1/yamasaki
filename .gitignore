@@ -29,6 +29,9 @@ Thumbs.db
 # Claude Code local settings
 .claude/settings.local.json
 
+# NotebookLM MCP auth
+auth.json
+
 # Node.js
 node_modules/
 npm-debug.log*
