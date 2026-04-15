@@ -1,0 +1,80 @@
+name: Auto-approve review markers on merge
+
+# PR が main にマージされたタイミングで docs/ 配下の未承認マーカー
+# (<!-- review:pending id=... --> ... <!-- /review -->) を剥がしてコミットする。
+# 段落本文は残し、マーカータグのみ削除する。
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**/*.md"
+
+permissions:
+  contents: write
+
+jobs:
+  strip-markers:
+    if: github.event.head_commit.message != null && !contains(github.event.head_commit.message, '[skip ci]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: true
+
+      - name: Strip pending review markers
+        id: strip
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import re, pathlib
+          MARKER = re.compile(
+              r"<!--\s*review:pending\s+id=[a-zA-Z0-9\-_]+"
+              r"(?:\s+type=(\w+))?"
+              r"\s*-->\s*\n?"
+              r"(.*?)"
+              r"\n?\s*<!--\s*/review\s*-->",
+              re.DOTALL,
+          )
+          WAS_NOW = re.compile(
+              r"\s*<!--\s*review:was\s*-->\s*\n?"
+              r"(?:.*?)"
+              r"\n?\s*<!--\s*review:now\s*-->\s*\n?"
+              r"(.*?)\s*$",
+              re.DOTALL,
+          )
+          def _resolve(m):
+              mtype = (m.group(1) or "").lower()
+              body = m.group(2)
+              if mtype == "delete":
+                  return ""
+              wn = WAS_NOW.fullmatch(body)
+              if wn:
+                  return wn.group(1)
+              return body
+          total = 0
+          for p in pathlib.Path("docs").rglob("*.md"):
+              text = p.read_text(encoding="utf-8")
+              new_text, n = MARKER.subn(_resolve, text)
+              if n:
+                  new_text = re.sub(r"\n{3,}", "\n\n", new_text)
+                  p.write_text(new_text, encoding="utf-8")
+                  total += n
+                  print(f"stripped {n} marker(s) from {p}")
+          print(f"total stripped: {total}")
+          PY
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          set -e
+          if git diff --quiet; then
+            echo "✅ no pending markers to strip"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/
+          git commit -m "chore: auto-approve review markers on merge [skip ci]"
+          git push
