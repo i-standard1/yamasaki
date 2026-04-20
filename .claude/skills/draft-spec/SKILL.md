@@ -41,6 +41,11 @@ context:
 テンプレートが存在しない場合は、従来の手順でそのまま生成する（テンプレート不在でブロックしない）。
 
 ## 手順
+
+本スキルは**親=ヒアリング・方針・レビュー / spec-writer(Sonnet)=執筆**の分担で進める。
+
+### フェーズ1: ヒアリング（親エージェント）
+
 1. ユーザーの入力を分析し、要件のドラフトをまとめる
 2. 不足情報を質問する（最大8問、Yes/Noで答えやすい形式）
    - 担当者も確認する。ユーザーが指定しなければ「未定」とする
@@ -52,57 +57,101 @@ context:
      - 状態遷移（ステータスの遷移制約、無効な遷移の扱い）
      - 同時操作（先勝ち/後勝ち/排他制御の方針）
      - データ削除（論理削除/物理削除、関連データの連鎖削除）
-3. **OVERVIEW Specの確認・作成**: docs/requirements/features/ にOVERVIEW（サービス概要）Specが存在するか確認する
+3. **OVERVIEW Specの確認・作成判定**: docs/requirements/features/ にOVERVIEW（サービス概要）Specが存在するか確認する
    - **存在しない場合**: 個別機能の要件定義の前に、まずOVERVIEW Specを作成する（後述「OVERVIEW Specルール」参照）
    - **存在する場合**: 内容を読み、今回の要件で追記すべき共通仕様があればOVERVIEW Specも同時に更新する
 4. **共通コンポーネントの確認**: `docs/design/shared-components.md` が存在する場合、既存の共通コンポーネントを確認する
    - 今回の要件で再利用できそうな共通コンポーネント（UI部品、ユーティリティ、フック等）を洗い出す
-   - 要件定義書の「技術仕様」または「備考」に「共通コンポーネント○○を活用可能」と記載する
-   - 新たに共通化すべきパターンが見えた場合も記載する（例: 「他の機能と同じ入力フォームパターンがあるため共通化を検討」）
 5. **関連機能の発見**: 今回の要件に関連する既存機能を特定する
    - `overview.md` の機能一覧と依存関係セクションを読み、関連する既存Specを特定する
-   - 特定した関連Specを要件定義書の「関連 Spec」セクションに記載する
-   - `overview.md` の依存関係セクションも更新する
-6. 回答を元に docs/requirements/features/ に正式な要件定義書を生成
-   - テンプレート（`docs/templates/phase1/requirements-spec.md`）のセクション構成に従う
-   - REQ-ID を採番（OVERVIEWの場合はREQ-OVERVIEW-001）
-   - 担当者・ステータスを設定
-   - 受入条件を設定
-   - 非機能要件を設定（ただしシステム全体の非機能要件はOVERVIEWに記載済みなので重複させない）
-   - **要件定義書にはWHAT（何を作るか）だけを記載する。** 画面遷移図・APIエンドポイント・データモデル等のHOW（どう作るか）は基本設計フェーズで別途生成されるため、要件定義書には含めない
-   - ステップ5で特定した関連Specを「関連 Spec」セクションに記載する
-   - ステップ4で確認した共通コンポーネントの活用可能性を備考に記載する
-7. **業務フロー図の生成**（該当する場合）:
-   - 業務プロセスの変更を伴う機能の場合、`docs/requirements/business-flow.md` を生成または更新
-   - テンプレート（`docs/templates/phase1/business-flow.md`）に従い、AS-IS / TO-BE フローを記載
-   - 既に業務フロー図が存在する場合は、該当フローのみ追記・更新する
-8. **ユースケースの生成**（該当する場合）:
-   - 複数アクターが関与する機能の場合、`docs/requirements/usecase.md` を生成または更新
-   - テンプレート（`docs/templates/phase1/usecase.md`）に従い、ユースケース一覧・詳細を記載
-9. **画面一覧の更新**（UI を持つ機能の場合）:
-   - `docs/design/screen-flow.md`（Single Source of Truth）を生成または更新
-   - テンプレート（`docs/templates/phase1/screen-flow.md`）に従い、画面情報を追記
-   - **注:** 画面遷移図は `docs/design/screen-flow.md` に一元管理する。`docs/requirements/` には配置しない
-10. **非機能要件定義書の更新**（OVERVIEW 作成・更新時）:
-    - OVERVIEW Specの非機能要件が充実している場合、非機能要件関連ファイルを生成または更新
-    - テンプレート（`docs/templates/phase2/non-functional.md` のインデックス）に従い、性能・可用性・運用の各設計書に分けて記載
-11. docs/requirements/overview.md を更新:
-    - 機能一覧テーブルに REQ-ID・担当を追加
-    - 依存関係セクションに今回の機能の依存先・依存元を追記
-12. spec-map.yml に新規REQ-IDのエントリを追加し、`depends_on` に依存先を記載する
-13. `docs/design/dependency-graph.md` が存在する場合、新規Specの依存関係を追記する（Mermaid図 + 依存マトリクス）。存在しない場合はスキップ
-14. mkdocs.yml の nav を更新
-15. コミット
-16. 次のステップを提案（以下の優先順で提案する）：
+
+### フェーズ2: 執筆プラン整理（親エージェント）
+
+6. 以下を整理し、spec-writer へ渡す委任プロンプトを組み立てる:
+   - **REQ-ID採番**（OVERVIEWの場合は `REQ-OVERVIEW-001`）
+   - 担当者・ステータス・受入条件
+   - 生成対象ドキュメントの要否判定:
+     - 要件定義書: 常に必須（`docs/requirements/features/[REQ-ID].md`）
+     - 業務フロー図: 既存業務プロセスの変更を伴う、または複雑な業務フローがある場合
+     - ユースケース: 複数アクターが異なる操作を行う場合
+     - 画面一覧: UIを持つ機能の場合（常に更新）
+     - 非機能要件定義書: OVERVIEW Specの初回作成時、または大幅な非機能要件追加時
+   - 関連Spec、共通コンポーネントの活用可能性
+
+### フェーズ3: 執筆委任（spec-writer、並列可）
+
+7. `Agent(subagent_type: spec-writer)` に以下を**並列**で委任する（ファイル単位で独立しているため）:
+
+   **委任プロンプト形式**:
+   ```
+   あなたは spec-writer です。以下のドキュメントを生成してください。
+
+   ## 生成対象
+   docs/requirements/features/[REQ-ID].md
+
+   ## 参照テンプレート
+   docs/templates/phase1/requirements-spec.md
+
+   ## 埋める情報
+   - REQ-ID: [採番値]
+   - 担当者: [名前 or 未定]
+   - ステータス: [値]
+   - 受入条件: [親が整理した条件リスト]
+   - 関連Spec: [特定済みREQ-IDリスト]
+   - 活用可能な共通コンポーネント: [リスト]
+   - 非機能要件: [OVERVIEWに集約する分は記載しない]
+
+   ## ヒアリング結果サマリ
+   [フェーズ1で得た回答を整理して渡す]
+
+   ## 厳守事項
+   - 要件定義書にはWHAT（何を作るか）だけ記載。HOW（API/DB/画面遷移図）は基本設計で別途生成
+   - 不明点は「※ 要確認」マーカーを残し、推測で埋めない
+   - index系ファイル（overview.md / spec-map.yml / mkdocs.yml / dependency-graph.md）は触らない（親が更新）
+   - 完了時に軽量セルフチェックを実行し、結果を報告すること
+   ```
+
+   **並列委任する対象**（該当するもののみ）:
+   - 要件定義書
+   - 業務フロー図（`docs/requirements/business-flow.md`）
+   - ユースケース（`docs/requirements/usecase.md`）
+   - 非機能要件定義書（OVERVIEW 初回時のみ、`docs/templates/phase2/non-functional.md` のインデックス構成）
+
+### フェーズ4: index系更新（親エージェント）
+
+spec-writer は index 系に触らないため、親が責任を持って更新する:
+
+8. `docs/requirements/overview.md` を更新
+   - 機能一覧テーブルに REQ-ID・担当を追加
+   - 依存関係セクションに今回の機能の依存先・依存元を追記
+9. `spec-map.yml` に新規REQ-IDのエントリを追加し、`depends_on` に依存先を記載
+10. `docs/design/dependency-graph.md` が存在する場合、新規Specの依存関係を追記（Mermaid図 + 依存マトリクス）
+11. `mkdocs.yml` の nav を更新
+12. `docs/design/screen-flow.md` を更新（UI を持つ機能の場合）
+    - テンプレート（`docs/templates/phase1/screen-flow.md`）に従い画面情報を追記
+    - **注:** 画面遷移図は screen-flow.md に一元管理。docs/requirements/ には配置しない
+
+### フェーズ5: レビューと整合性チェック（親エージェント）
+
+13. spec-writer が生成したドキュメントを**本体が直接レビュー**する（Agent委任不可）
+    - 要確認マーカーの確認と対応（必要ならユーザーに追加ヒアリング）
+    - ヒアリング結果との整合性確認
+    - テンプレート構造の再現確認
+14. `Agent(subagent_type: integrity-checker)` を起動して機械的整合性チェック
+    - 変更ファイルリスト・新規REQ-ID を prompt で渡す
+    - チェック項目: `.claude/skills/_shared/doc-integrity-check.md` 参照
+    - FAIL があれば修正 → 再チェック（最大3ループ）
+
+### フェーズ6: コミット（親エージェント）
+
+15. 変更を `git add` してコミット
+
+### フェーズ7: 次ステップ提案
+
+16. 次のステップを提案（以下の優先順）:
     - **基本設計が未作成の場合（推奨）:** 「detail-design を実行して基本設計書（API仕様・DB設計・画面設計）を作成しますか？ 実装に必要な設計書が揃います」
     - 他の機能の要件も作る場合: 「他の機能の要件も作りますか？」
     - 基本設計が既にある場合: 「実装に進みますか？」
-
-**注:** 手順5〜8は機能の性質に応じて任意。全ての要件に業務フローやユースケースが必要なわけではない。判断基準：
-- 業務フロー図: 既存業務プロセスの変更を伴う、または複雑な業務フローがある場合
-- ユースケース: 複数のアクターが異なる操作を行う場合
-- 画面一覧: UIを持つ機能の場合（常に更新）
-- 非機能要件定義書: OVERVIEW Specの初回作成時、または大幅な非機能要件追加時
 
 ## OVERVIEW Spec（サービス概要）ルール
 OVERVIEW Specはシステム全体の共通仕様を一元管理するファイルである。

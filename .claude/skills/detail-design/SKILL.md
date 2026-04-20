@@ -147,9 +147,9 @@ PM オーケストレーション共通パターン（`.claude/rules/pm-orchestr
 
 ---
 
-## フェーズ 2: 設計書執筆（メインが一元管理）
+## フェーズ 2: 設計書執筆（spec-writer に委任）
 
-フェーズ1の情報収集結果をもとに、メインエージェントが設計書を執筆する。モード別ルール（コード根拠・値の出典・バリデーション）に従う。
+フェーズ1の情報収集結果をもとに、親が章立て・埋める情報・根拠を整理し、`Agent(subagent_type: spec-writer)` に委任する。**ファイル単位で並列実行**する（10本以上の設計書を並列執筆できる）。モード別ルール（コード根拠・値の出典・バリデーション・「※ 未確定」マーカー）は委任プロンプトに明示して渡す。**index系ファイルは親が更新する**（spec-writer は触らない）。
 
 詳細手順は [references/phase2-writing.md](references/phase2-writing.md) を参照。
 
@@ -157,7 +157,7 @@ PM オーケストレーション共通パターン（`.claude/rules/pm-orchestr
 
 ## フェーズ 3: mkdocs.yml 更新 & 整合性チェック
 
-mkdocs.yml 更新、整合性チェックサブエージェント、仕様カバレッジレビュー（コード分析モードのみ）、mkdocs build 確認を行う。
+mkdocs.yml 更新（親の責務）、`Agent(subagent_type: integrity-checker)` による機械的整合性チェック、設計書間の意味的整合性チェック（親が直接）、仕様カバレッジレビュー（コード分析モードのみ）、mkdocs build 最終確認を行う。
 
 詳細手順は [references/phase3-review.md](references/phase3-review.md) を参照。
 
