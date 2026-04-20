@@ -1,0 +1,36 @@
+# 残存検知キーワード辞書
+#
+# docs/overrides/hooks/review_index.py と .claude/skills/review-mark が参照する。
+# docs/ 配下の .md を走査し、各キーワードに該当する行を /review-pending/ に一覧化する。
+#
+# フィールド:
+#   id:          識別子（一覧の見出しアンカー・ログ用）
+#   label:       一覧セクションの見出し
+#   icon:        見出し先頭のアイコン
+#   pattern:     Python 正規表現。行単位でマッチ判定する
+#   severity:    info | warn
+#                  - info: 意図的残存も許容（要確認・TODO 等）
+#                  - warn: 再発防止対象。integrity-checker で FAIL になる
+#   description: 何を意味するか・どう解消するか
+#
+# プロジェクト固有の検知ワード（例: 過去に場当たりで入った記法の再発防止）は
+# このファイルにエントリを追加するだけで、プレビュー画面・CLI・integrity-check に
+# 自動反映される。
+
+keywords:
+  - id: needs-confirmation
+    label: 要確認
+    icon: "❓"
+    pattern: '※\s*要確認'
+    severity: info
+    description: |
+      spec-writer が不明点に残す平文マーカー。
+      内容が確定したら該当行ごと削除する。
+
+  - id: todo-comment
+    label: TODO
+    icon: "📝"
+    pattern: '\b(TODO|FIXME|TBD)\b'
+    severity: info
+    description: |
+      TODO/FIXME/TBD。実装・設計の保留事項。

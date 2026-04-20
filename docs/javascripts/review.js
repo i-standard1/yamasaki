@@ -15,6 +15,13 @@
     });
   }
 
+  function removeMarkerDom(btn) {
+    var container = btn.closest(".review-pending");
+    if (container && container.parentNode) {
+      container.parentNode.removeChild(container);
+    }
+  }
+
   function onClick(e) {
     e.preventDefault();
     var btn = e.currentTarget;
@@ -31,18 +38,20 @@
       body: JSON.stringify({ file: file, review_id: reviewId }),
     })
       .then(function (res) {
+        if (res.status === 404) {
+          // mkdocs の rebuild 前に再クリックされた等で既に除去済み。silent success として DOM から消す
+          return { alreadyRemoved: true };
+        }
         if (!res.ok) {
-          return res
-            .text()
-            .then(function (t) {
-              throw new Error("API " + res.status + ": " + t);
-            });
+          return res.text().then(function (t) {
+            throw new Error("API " + res.status + ": " + t);
+          });
         }
         return res.json();
       })
       .then(function () {
-        btn.textContent = "✓ 承認済";
-        btn.classList.add("done");
+        // livereload を待たずに DOM から即除去（スクロール位置を維持するため reload はしない）
+        removeMarkerDom(btn);
       })
       .catch(function (err) {
         btn.disabled = false;

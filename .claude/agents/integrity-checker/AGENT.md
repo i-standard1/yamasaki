@@ -35,6 +35,7 @@ model: sonnet
    - `mkdocs.yml`
    - `docs/design/dependency-graph.md`（存在する場合）
 6. **画面遷移リンク実在** — `screen-flow.md` 内の遷移先が実在するか
+7. **キーワード残存（辞書ベース）** — `review-keywords.yml` の各パターン残存を可視化。`severity: warn` エントリが1件でもヒットしたら **FAIL**、`severity: info` は INFO のみ
 
 ## 出力フォーマット
 
@@ -70,6 +71,12 @@ JSON または Markdown 構造化レポート:
 ### Screen Flow
 - Status: PASS | FAIL | N/A
 - 不整合: [遷移元 → 遷移先, 問題内容]
+
+### キーワード残存
+- Status: PASS | FAIL（warn エントリが1件でもヒットしたら FAIL）
+- 各キーワード:
+  - [icon] [label]（severity）: [件数] 件
+    - [ファイル:行, 抜粋]
 
 ### 総合判定
 - OVERALL: PASS | FAIL

@@ -30,6 +30,7 @@ model: sonnet
 ### 完了時
 - 生成/更新したファイル一覧と、各ファイルの要約（1行）を親に返す
 - `※ 要確認` マーカーを残した箇所があれば、その一覧も返す
+- **新規ファイルを作成した場合**は `.claude/rules/review-mark.md` の「ファイル全体が新規作成の場合」の規定に従い、ファイル先頭に追加マーカー1個でファイル全体を包むこと（個別段落のマーカーは不要）
 - **コミットはしない。** `git add` / `git commit` は親が実行する
 - **軽量セルフチェックを実行する**: `.claude/skills/_shared/doc-integrity-check.md` の「軽量セルフチェック（spec-writer 用）」セクションに従い、`mkdocs build` の成否・Mermaid構文・相対リンク実在を確認。結果を完了報告に含める（例: `mkdocs build: OK, mermaid: 3/3 OK, links: 5/5 OK`）
 - フル整合性チェックは親が `integrity-checker` に委任するため、spec-writer は軽量版のみでよい
