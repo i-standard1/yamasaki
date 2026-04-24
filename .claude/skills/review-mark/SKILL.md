@@ -1,7 +1,7 @@
 ---
 name: review-mark
-description: レビューマーカーの一覧・承認・除去を行う。「未承認一覧見せて」「r-XXXX を承認して」「このファイルのレビュー全部承認して」「レビューマーカー一覧」等のリクエストで発火する。
-argument-hint: "[list | approve <id|--all> [file]]"
+description: レビューマーカーの一覧・承認・除去を行う。「未承認一覧見せて」「r-XXXX を承認して」「このファイルのレビュー全部承認して」「レビューマーカー一覧」「要確認一覧」等のリクエストで発火する。
+argument-hint: "[list | approve <id|--all> [file] | todos]"
 ---
 
 # review-mark スキル
@@ -17,6 +17,7 @@ argument-hint: "[list | approve <id|--all> [file]]"
 /review-mark approve <review-id>
 /review-mark approve --all <file>
 /review-mark approve --all
+/review-mark todos                     # ※ 要確認 平文マーカー一覧
 ```
 
 ## 動作
@@ -62,6 +63,43 @@ argument-hint: "[list | approve <id|--all> [file]]"
 2. ユーザーに「○件の未承認マーカーを全て除去します。よろしいですか？」と確認
 3. 承認されたら全ファイルから全マーカーを除去
 4. 処理したファイル数と件数を返す
+
+### todos モード（キーワード残存一覧）
+
+`review-keywords.yml`（プロジェクト直下）で定義された全キーワードを `docs/` 配下から
+走査し、キーワードごとに該当行を一覧する。HTML コメントマーカーとは別物で `approve` では除去できない。
+
+辞書は `<id, label, icon, pattern, severity, description>` の形。代表例:
+- `※ 要確認`（info・意図的残存OK）
+- `!!! info "確定:`（warn・再発防止対象）
+- `TODO` / `FIXME` / `TBD`（info）
+
+新しい検知対象を増やしたい時はスキルではなく `review-keywords.yml` にエントリを1つ追加するだけで良い。
+
+手順:
+
+1. `review-keywords.yml` を読み込んで各キーワード定義を取得
+2. 各キーワードの `pattern`（Python 正規表現）で `grep -rnP 'パターン' docs --include='*.md'` を実行
+3. キーワードごとに Markdown 表で一覧表示し、件数・severity・説明を併記
+
+出力例:
+```
+## ❓ 要確認（3 件・info）
+仕様未確定の箇所。内容を確定したら該当行を削除する。
+
+| ファイル                 | 行  | 抜粋                 |
+|-------------------------|----:|---------------------|
+| design/non-functional.md | 214 | ...                 |
+
+## 🏷 確定タグ残存（0 件・warn）
+✅ 該当なし。
+
+## 📝 TODO（5 件・info）
+...
+```
+
+自動除去は行わない（内容を確定した上で人が消す必要があるため）。
+ブラウザで見たい場合は `/review-pending/` にも同じ一覧が生成されている。
 
 ## 承認時の本文の扱い（3 種のマーカー別）
 

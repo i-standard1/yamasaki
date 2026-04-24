@@ -46,8 +46,11 @@
 1. [仕様カバレッジレビュー](../../_shared/spec-coverage-review.md) に従い、コードと要件定義書を突合
 2. 漏れがあれば該当Specに追記してコミット
 
-### 6.3 ビルド確認
-`mkdocs build` でビルドエラーがないことを確認
+### 6.3 機械的整合性チェック
+`Agent(subagent_type: integrity-checker)` を起動する（直列1回のみ）:
+- 全変更ファイルリスト・新規REQ-IDリストを prompt で渡す
+- チェック項目: `.claude/skills/_shared/doc-integrity-check.md` 参照
+- FAIL があれば修正 → 再チェック（最大3ループ）
 
 ---
 
