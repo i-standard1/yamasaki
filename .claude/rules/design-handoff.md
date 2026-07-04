@@ -10,6 +10,8 @@ description: デザインハンドオフ（Figma/スクリーンショット→�
 
 デザイナーからの成果物（Figma、スクリーンショット等）を開発に取り込む際のルール。
 
+デザインの出所が **ClaudeDesign（claude.ai/design）のURL** の場合は、取得に `claude-design` スキルを使う（DesignSyncツール経由。WebFetchでは取得できない）。取得後の配置・リンク記載は本ルールに従う。
+
 ## デザインファイルの管理
 
 ### 配置場所
