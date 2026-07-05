@@ -83,6 +83,7 @@ Claude Code で `/model` を実行し、以下を設定：
 | 「REQ-AUTH-001 を実装して」 | implement-spec | 設計 → 実装 → テスト → レビュー → コミット |
 | 「アップロード上限を 10MB に変えて」 | revise-spec | 影響分析 → 設計変更 → コード修正 → レビュー |
 | 「このデザインに差し替えて」 | apply-design | ロジック不変で見た目だけ更新 |
+| 「ClaudeDesignからデザインを取得して」 | claude-design | claude.ai/design のデザインを取得・同期 |
 | 「テストを書いて」 | gen-tests | ユニットテスト + E2E テストを追加 |
 | 「本番が落ちた、緊急で直して」 | hotfix | コード先行で修正 → Spec 同期 |
 | 「さっきの変更を設計書に反映して」 | update-docs | コード変更からドキュメントを追従 |
