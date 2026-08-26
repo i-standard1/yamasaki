@@ -56,6 +56,19 @@
           {
             "type": "command",
             "command": ".claude/hooks/show-git-context.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/check-pr-env-metadata.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__github__create_pull_request",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/check-pr-env-metadata.sh"
           }
         ]
       }

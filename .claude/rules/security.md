@@ -56,6 +56,8 @@ deny → ask → allow の順で評価される。deny に入れたコマンド�
 
 加えて `.claude/hooks/show-git-context.sh` が git の状態変更操作（commit/push/branch切替/merge/PR作成）の直前に作業ディレクトリ・ブランチ・リポジトリ名を非ブロッキングで表示し、リポジトリ取り違え・ベースブランチ誤りを防ぐ（ブロックはしない。情報提示のみ）。
 
+さらに `.claude/hooks/check-pr-env-metadata.sh` が PR 作成（`gh pr create` / `mcp__github__create_pull_request`）の直前に本文を検査し、生成環境ブロック（`claude-env` マーカー）が無ければブロックする。本文ファイルの中身が判定できない場合は警告のみでブロックしない。
+
 ## 運用ルール
 - `/permissions` で月1回、権限設定を棚卸しする
 - 不要な allow ルールが蓄積していないか確認する
