@@ -90,14 +90,60 @@ PR作成時に、その時点の Claude Code のモデル・エフォート設�
 
 feedback-template の手順6: PR作成直前まで実行し、本文末尾に生成環境ブロックが付くことを確認済み。
 
-**未検証**: `gh` が当環境に無いため、実際の `gh pr create` 実行とフック連携の実地確認は未実施。
+上記は Linux 系セッションでの結果。Windows 実機での再検証結果は「Windows 実機での実施結果」を参照。
+
+## Windows 実機での実施結果
+
+実施環境: Windows 11 / Git for Windows (Git Bash) / Claude Code 2.1.246 / gh 2.98.0
+
+### PR 作成（完了）
+
+PR #30 <https://github.com/i-standard1/yamasaki/pull/30>
+
+本文に `pr-env-metadata.sh` の実測出力（`claude-opus-5` / `high` / `2.1.246`）を含めた。
+本機能の第1号の適用例。
+
+### 実機で判明した3つの不具合と対処
+
+いずれも Windows 固有で、Linux 系セッションでは表面化しない。
+
+| 不具合 | 影響 | 対処 |
+|--------|------|------|
+| `python3` が Microsoft Store のスタブ（`%LOCALAPPDATA%\Microsoft\WindowsApps\python3`）に解決される。`Python` とだけ出力して exit 49 | 両スクリプトが機能しない。特に `check-pr-env-metadata.sh` は exit 2 を返せず**記載漏れをブロックできない**（ガードが実質無効） | `.claude/hooks/_python.sh` を追加し `python3` → `python` → `py -3` の順に**実際に式を評価して**解決。どれも無い場合は grep による縮退判定に落とす |
+| Python の標準出力が locale encoding（cp932 等）になる | `pr-env-metadata.sh > body.md` の出力が文字化けし、PR本文がそのまま化ける | python 側で `sys.stdout/stderr.reconfigure(encoding="utf-8")` |
+| `--body-file` に MSYS 形式の絶対パス（`/c/...`）が渡ると `os.path.isfile` が False | マーカー無しでもブロックされず「判定不能→素通し」に落ちる | ドライブレター形式（`C:/...`）への読み替え候補も試す |
+
+`command -v python3` の存在確認だけでは不十分なのが要点。スタブは存在するが動かない。
+
+### 回帰テスト（17ケース・全PASS）
+
+`check-pr-env-metadata.sh` を素の環境（`python` フォールバック）と Python 完全不在の
+両方で実行。既存11ケース + MSYS パス解決 + 縮退判定4ケース。
+
+| 環境 | ケース | 結果 |
+|------|--------|------|
+| 通常（python フォールバック） | 既存11ケース + `--body-file` MSYS パス | 全て期待どおり |
+| Python 不在（縮退判定） | 無関係コマンド / マーカー無し / マーカー有り / `--body-file` | 素通し / ブロック / 素通し / 注意喚起 |
+
+縮退判定は **PR作成コマンド以外を必ず素通しさせる**のが要件。このフックは `Bash`
+マッチャに掛かっているため、判定不能で一律ブロックすると全 Bash 実行が詰まる。
 
 ## 残タスク
 
-1. **この変更の PR を作成する**（未作成）
-   - compare: https://github.com/i-standard1/yamasaki/compare/main...claude/pr-model-effort-metadata-ipcu5e
-   - 本文には `.claude/hooks/pr-env-metadata.sh` の出力を含めること（自分自身が第1号の適用例になる）
-2. **実地確認**: 実際に `gh pr create` を叩き、(a) マーカー無しでブロックされる (b) マーカー有りで通る、を確認
+1. **Claude Code 経由の end-to-end 実地確認**（未完）
+   headless セッション（`claude -p`）から `gh pr create` を叩いたが、
+   ワークスペース未信頼のため `.claude/settings.json` の `permissions.allow` が
+   無視され、フックまで到達しなかった。
+   `~/.claude.json` の `projects["<repo path>"].hasTrustDialogAccepted` を
+   `true` にする（= 一度対話起動して信頼ダイアログを承認する）必要がある。
+   フック単体の挙動は上記回帰テストで確認済みなので、残るのは
+   「Claude Code が実際にこのフックを発火させるか」の確認のみ。
+2. **他フックの `python3` 依存の解消**
+   `validate-command.sh` / `enforce-execution-rules.sh` / `show-git-context.sh` も
+   `python3` 直呼びのため、同じ環境では同様に無効化される。
+   いずれも `2>/dev/null || echo ""` で失敗を飲み込む書き方のため、
+   **エラーも出さずに素通しする**（= 危険コマンド検出が効かない）。
+   `.claude/hooks/_python.sh` に乗せ替えれば解消できる。本PRの範囲外。
 3. マージ後、他プロジェクトへ `sync-template` で展開するか判断
 
 ## 注意点・判断メモ（WHY NOT）

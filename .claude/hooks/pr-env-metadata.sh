@@ -10,6 +10,8 @@
 #   .claude/hooks/pr-env-metadata.sh <transcript.jsonl>  # 明示指定
 #
 # 取得できなかった項目は「不明」と出力する（推測で埋めない）。
+# python3 が使えない環境（Windows の Microsoft Store スタブ等）では
+# python / py -3 にフォールバックする（.claude/hooks/_python.sh）。
 # 終了コードは常に 0。特定できなかった場合のみ stderr に警告を出す。
 
 set -u
@@ -35,11 +37,36 @@ if [ -z "$TRANSCRIPT" ]; then
   TRANSCRIPT=$(ls -t "$PROJECTS_DIR/$SLUG"/*.jsonl 2>/dev/null | head -1)
 fi
 
-python3 - "$TRANSCRIPT" <<'PY_EOF'
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=./_python.sh
+. "$SCRIPT_DIR/_python.sh"
+
+# Python が使えない環境（Windows の python3 スタブ等）ではトランスクリプトを
+# 解析できないため、環境変数で埋められる分だけ埋めて出力する。
+if [ -z "$PYTHON" ]; then
+  FB_EFFORT="${CLAUDE_EFFORT:-}"
+  FB_VERSION=$(printf '%s' "${AI_AGENT:-}" \
+    | sed -n 's/^claude-code_\([0-9-]\{1,\}\)_.*$/\1/p' | tr '-' '.')
+  printf '<!-- claude-env -->\n## 生成環境\n\n| 項目 | 値 |\n|------|-----|\n'
+  printf '| モデル | %s |\n' "不明"
+  printf '| エフォート | %s |\n' "${FB_EFFORT:-不明}"
+  printf '| Claude Code | %s |\n' "${FB_VERSION:-不明}"
+  printf 'WARN: 動作する Python が見つからないためトランスクリプトを解析できませんでした。%s\n' \
+    "不明の項目は推測で埋めず、そのまま残してください。" >&2
+  exit 0
+fi
+
+# shellcheck disable=SC2086
+$PYTHON - "$TRANSCRIPT" <<'PY_EOF'
 import json
 import os
 import re
 import sys
+
+# Windows では既定の出力エンコーディングが cp932 等になり、
+# PR本文にリダイレクトすると文字化けするため UTF-8 に固定する。
+sys.stdout.reconfigure(encoding="utf-8")
+sys.stderr.reconfigure(encoding="utf-8")
 
 path = sys.argv[1] if len(sys.argv) > 1 else ""
 model = ""
