@@ -84,12 +84,10 @@ git checkout -b fix/<問題を端的に表すスラッグ>
 
 ```bash
 cd /tmp/yamasaki
-git add -A
-git commit -m "fix: <問題の要約>"
-git push origin fix/<スラッグ>
-gh pr create \
-  --title "fix: <問題の要約>" \
-  --body "$(cat <<'EOF'
+
+# PR本文をファイルに組み立てる
+PR_BODY=/tmp/template-pr-body.md
+cat > "$PR_BODY" <<'EOF'
 ## 何が起きたか
 <問題の説明>
 
@@ -104,13 +102,25 @@ gh pr create \
 - [x] 他のプロジェクトでも同じ問題が起きうる
 - [x] 手元のプロジェクトで検証済み
 EOF
-)"
+
+# 生成環境ブロック（モデル・エフォート・Claude Codeバージョン）を追記する。
+# スクリプトはセッションIDからトランスクリプトを探すため、実行位置は問わない。
+if [ -x .claude/hooks/pr-env-metadata.sh ]; then
+  printf '\n' >> "$PR_BODY"
+  .claude/hooks/pr-env-metadata.sh >> "$PR_BODY"
+fi
+
+git add -A
+git commit -m "fix: <問題の要約>"
+git push origin fix/<スラッグ>
+gh pr create --title "fix: <問題の要約>" --body-file "$PR_BODY"
 ```
 
 ### 8. クリーンアップ
 
 ```bash
 find /tmp/yamasaki -delete 2>/dev/null || true
+rm -f /tmp/template-pr-body.md
 ```
 
 ユーザーに報告：「テンプレートリポにPRを作成しました: <PR URL>」
@@ -119,6 +129,7 @@ find /tmp/yamasaki -delete 2>/dev/null || true
 - プロジェクト固有の情報（リポ名、URL、APIキー、ポート番号等）は絶対に含めない
 - テンプレートリポの.claude/CLAUDE.mdは修正してよい（共通ルール）
 - テンプレートリポのCLAUDE.mdはコメント内の例示のみ修正する（実値は書かない）
+- PR本文には生成環境ブロック（モデル・エフォート・Claude Codeバージョン）を含める。値は `.claude/hooks/pr-env-metadata.sh` の出力（実測値）を使い、記憶や推測で書かない（`.claude/rules/git-workflow.md` 参照）
 - 既存のスキルの構造を壊さない。手順の追加・修正のみ行う
 - gh CLI が使えない環境では、コミット＆プッシュまで行い、PR作成はユーザーに依頼する
 - テンプレートリポのURLが.claude/CLAUDE.mdに記載されていない場合、ユーザーに確認する
